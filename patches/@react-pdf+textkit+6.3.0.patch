@@ -1,0 +1,153 @@
+diff --git a/node_modules/@react-pdf/textkit/lib/textkit.js b/node_modules/@react-pdf/textkit/lib/textkit.js
+index 0b8b6fa..b819214 100644
+--- a/node_modules/@react-pdf/textkit/lib/textkit.js
++++ b/node_modules/@react-pdf/textkit/lib/textkit.js
+@@ -289,17 +289,27 @@ const slice$2 = (start, end, font, glyph) => {
+ };
+ 
+ /**
+- * Return last glyph index that maps to the given string index.
++ * Return the glyph index that maps to the given string index.
+  * Falls back to the string index itself if glyphIndices is not present.
+  *
+- * When multiple consecutive glyphs point to the same string index
+- * (e.g. decomposed characters), returns the last glyph in that group.
++ * When multiple consecutive glyphs point to the same string index (e.g.
++ * decomposed characters, or a zero-width Arabic cursive-attachment glyph
++ * immediately following a base letter), this returns the last glyph in
++ * that group by default. Pass `preferFirst: true` when resolving a range
++ * *start* boundary (as `slice$1` below does) so the real base glyph is
++ * kept instead of being skipped in favor of a trailing zero-width glyph
++ * that merely shares its string index — otherwise the sliced run's glyphs
++ * array silently drops a glyph while `stringIndices` still references the
++ * original (unsliced) length, which later crashes bidi reordering with
++ * "Cannot read properties of undefined" for scripts like Arabic.
++ * See: https://github.com/diegomura/react-pdf/issues/3406
+  *
+  * @param index - String index
+  * @param run - Run
++ * @param preferFirst - Resolve ties to the first glyph in the group instead of the last
+  * @returns Glyph index
+  */
+-const glyphIndexAt = (index, run) => {
++const glyphIndexAt = (index, run, preferFirst) => {
+     const glyphIndices = run?.glyphIndices;
+     if (!glyphIndices)
+         return index;
+@@ -315,6 +325,11 @@ const glyphIndexAt = (index, run) => {
+             break;
+         }
+     }
++    if (preferFirst) {
++        while (result > 0 && glyphIndices[result - 1] === glyphIndices[result]) {
++            result -= 1;
++        }
++    }
+     return result;
+ };
+ 
+@@ -343,7 +358,7 @@ const slice$1 = (start, end, run) => {
+     const runScale = scale(run);
+     const font = getFont(run);
+     // Get glyph start and end indices
+-    const startIndex = glyphIndexAt(start, run);
++    const startIndex = glyphIndexAt(start, run, true);
+     const endIndex = glyphIndexAt(end - 1, run);
+     // Get start and end glyph
+     const startGlyph = run.glyphs?.[startIndex];
+@@ -999,12 +1014,13 @@ const getReorderedIndices = (string, segments) => {
+     });
+     return indices;
+ };
+-const getItemAtIndex = (runs, objectName, index) => {
++const getRunItemAtIndex = (runs, index) => {
+     for (let i = 0; i < runs.length; i += 1) {
+         const run = runs[i];
+-        const updatedIndex = run.stringIndices[index - run.start];
+         if (index >= run.start && index < run.end) {
+-            return run[objectName][updatedIndex];
++            const glyphIndex = run.stringIndices?.[index - run.start];
++            if (glyphIndex !== undefined)
++                return { run, glyphIndex };
+         }
+     }
+     throw new Error(`index ${index} out of range`);
+@@ -1022,28 +1038,56 @@ const reorderLine = (line) => {
+         return line;
+     const indices = getReorderedIndices(line.string, segments);
+     const updatedString = bidi$2.getReorderedString(line.string, embeddingLevels);
+-    const updatedRuns = line.runs.map((run) => {
+-        const selectedIndices = indices.slice(run.start, run.end);
+-        const updatedGlyphs = [];
+-        const updatedPositions = [];
+-        const addedGlyphs = new Set();
+-        for (let i = 0; i < selectedIndices.length; i += 1) {
+-            const index = selectedIndices[i];
+-            const glyph = getItemAtIndex(line.runs, 'glyphs', index);
+-            if (addedGlyphs.has(glyph.id))
+-                continue;
+-            updatedGlyphs.push(glyph);
+-            updatedPositions.push(getItemAtIndex(line.runs, 'positions', index));
+-            if (glyph.isLigature) {
+-                addedGlyphs.add(glyph.id);
+-            }
+-        }
+-        return {
+-            ...run,
+-            glyphs: updatedGlyphs,
+-            positions: updatedPositions,
+-        };
+-    });
++    // Ligature glyphs (e.g. Arabic joined letter forms) can be shared by
++    // several string indices belonging to the same run. Rebuilding runs by
++    // walking the reordered indices in order (instead of mapping each run's
++    // own index range independently) keeps ligature clusters intact and
++    // avoids reading past the end of a run's glyph array.
++    // See: https://github.com/diegomura/react-pdf/issues/3406
++    const updatedRuns = [];
++    let currentRun = null;
++    let currentStart = 0;
++    let currentGlyphs = [];
++    let currentGlyphIndices = [];
++    let currentPositions = [];
++    let currentStringIndices = [];
++    let currentStringIndexByGlyphIndex = new Map();
++    const flushRun = (endIdx) => {
++        if (!currentRun)
++            return;
++        updatedRuns.push({
++            ...currentRun,
++            start: currentStart,
++            end: endIdx,
++            glyphs: currentGlyphs,
++            glyphIndices: currentGlyphIndices,
++            positions: currentPositions,
++            stringIndices: currentStringIndices,
++        });
++    };
++    for (let visualIndex = 0; visualIndex < indices.length; visualIndex += 1) {
++        const { run, glyphIndex } = getRunItemAtIndex(line.runs, indices[visualIndex]);
++        if (run !== currentRun) {
++            flushRun(visualIndex);
++            currentRun = run;
++            currentStart = visualIndex;
++            currentGlyphs = [];
++            currentGlyphIndices = [];
++            currentPositions = [];
++            currentStringIndices = [];
++            currentStringIndexByGlyphIndex = new Map();
++        }
++        let reorderedGlyphIndex = currentStringIndexByGlyphIndex.get(glyphIndex);
++        if (reorderedGlyphIndex === undefined) {
++            reorderedGlyphIndex = currentGlyphs.length;
++            currentStringIndexByGlyphIndex.set(glyphIndex, reorderedGlyphIndex);
++            currentGlyphs.push(run.glyphs[glyphIndex]);
++            currentGlyphIndices.push(visualIndex - currentStart);
++            currentPositions.push(run.positions[glyphIndex]);
++        }
++        currentStringIndices.push(reorderedGlyphIndex);
++    }
++    flushRun(indices.length);
+     return {
+         box: line.box,
+         runs: updatedRuns,
