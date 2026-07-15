@@ -3,6 +3,7 @@ import { Inter, IBM_Plex_Sans_Arabic } from "next/font/google";
 import "./globals.css";
 import { LocaleProvider } from "@/lib/i18n/LocaleProvider";
 import { getServerLocale } from "@/lib/i18n/get-server-locale";
+import { NumberInputWheelGuard } from "@/components/number-input-wheel-guard";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -38,6 +39,7 @@ export default async function RootLayout({
       className={`${inter.variable} ${arabic.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">
+        <NumberInputWheelGuard />
         <LocaleProvider initialLocale={locale}>{children}</LocaleProvider>
       </body>
     </html>
