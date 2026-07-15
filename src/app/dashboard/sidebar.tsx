@@ -103,6 +103,7 @@ export function Sidebar({ dict, permissions }: { dict: Dictionary; permissions: 
     <aside className="fixed inset-y-0 start-0 z-20 flex w-60 flex-col border-e border-slate-200 bg-white">
       <Link
         href="/dashboard"
+        prefetch={false}
         className="flex items-center gap-2 border-b border-slate-200 px-5 py-5 hover:bg-slate-50"
       >
         <Wind className="h-6 w-6 shrink-0 text-blue-600" strokeWidth={2} />
@@ -128,6 +129,7 @@ export function Sidebar({ dict, permissions }: { dict: Dictionary; permissions: 
                     <Link
                       key={item.href}
                       href={item.href}
+                      prefetch={false}
                       className={`flex items-center gap-3 rounded-md border-s-[3px] px-3 py-2 text-sm ${
                         isActive
                           ? "border-blue-600 bg-blue-50 font-medium text-blue-600"

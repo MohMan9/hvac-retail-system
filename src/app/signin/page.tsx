@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Wind } from "lucide-react";
 import { signIn } from "./actions";
@@ -24,8 +24,17 @@ function SignInForm() {
   const deactivated = searchParams.get("deactivated") === "1";
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // A ref (not state) so a double-click/tap fired before React re-renders
+  // the disabled button is still caught synchronously — state updates from
+  // setIsSubmitting aren't reflected in the DOM until the next render, which
+  // leaves a brief window where a fast second click can still fire.
+  const isSubmittingRef = useRef(false);
 
   async function handleSubmit(formData: FormData) {
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     setError(null);
 
@@ -38,6 +47,7 @@ function SignInForm() {
       setError(t(result.error as keyof Dictionary));
     }
 
+    isSubmittingRef.current = false;
     setIsSubmitting(false);
   }
 
