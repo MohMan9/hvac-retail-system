@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ProductForm } from "./product-form";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
+import { getEffectivePermissions } from "@/lib/permissions.server";
+import { hasPermission } from "@/lib/permissions";
 import { mutedTextClass, pageTitleClass } from "@/lib/ui";
 
 export default async function NewProductPage() {
@@ -15,12 +17,13 @@ export default async function NewProductPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, organization_id")
+    .select("organization_id")
     .eq("id", authData.user.id)
     .single();
 
-  const isAdmin = profile?.role === "admin";
-  const canManage = profile?.role === "manager" || profile?.role === "admin";
+  const permissions = await getEffectivePermissions();
+  const canManage = hasPermission(permissions, "manage_products");
+  const canViewCosts = hasPermission(permissions, "view_product_costs");
 
   if (!canManage || !profile) {
     return (
@@ -39,7 +42,7 @@ export default async function NewProductPage() {
   return (
     <main className="mx-auto max-w-2xl px-8 py-6">
       <h1 className={`${pageTitleClass} mb-6`}>{dict["productForm.newTitle"]}</h1>
-      <ProductForm canManage={canManage} isAdmin={isAdmin} warehouses={warehouses ?? []} />
+      <ProductForm canManage={canManage} canViewCosts={canViewCosts} warehouses={warehouses ?? []} />
     </main>
   );
 }

@@ -24,6 +24,14 @@ export function InvoiceActions({ invoiceId }: { invoiceId: string }) {
       return;
     }
 
+    // Surface the "cash sale but register is closed" gap instead of letting it
+    // pass silently. Use a blocking alert so it's seen before the refresh
+    // below re-renders this draft-only component away (the invoice is now
+    // completed). The sale still went through either way.
+    if (result.cashRegisterClosed) {
+      window.alert(t("invoiceDetail.cashRegisterClosedWarning"));
+    }
+
     router.refresh();
   }
 

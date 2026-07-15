@@ -19,6 +19,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
+import { hasPermission, type Permissions } from "@/lib/permissions";
 
 type NavItem = {
   href: string;
@@ -31,10 +32,14 @@ type NavGroup = {
   items: NavItem[];
 };
 
-export function Sidebar({ dict, role }: { dict: Dictionary; role: string }) {
+export function Sidebar({ dict, permissions }: { dict: Dictionary; permissions: Permissions }) {
   const pathname = usePathname();
-  const canManage = role === "manager" || role === "admin";
-  const isAdmin = role === "admin";
+  // Every nav item's visibility is now driven by its matching permission
+  // rather than by role. Items with no gating permission (Sales, Invoices,
+  // Products, Customers, Inventory, and the read-only Cash Register status
+  // view) stay visible to everyone; the actions inside each page are gated
+  // separately (and by RLS).
+  const can = (key: Parameters<typeof hasPermission>[1]) => hasPermission(permissions, key);
 
   const groups: NavGroup[] = [
     {
@@ -49,41 +54,40 @@ export function Sidebar({ dict, role }: { dict: Dictionary; role: string }) {
       items: [
         { href: "/dashboard/products", labelKey: "nav.products", icon: Package },
         { href: "/dashboard/customers", labelKey: "nav.customers", icon: Users },
-        // Managers can't see Expenses/Partners/Report, so showing Services
-        // under its own "Finance" section header would wrongly imply they
-        // have broader Finance access. Group it under Catalog for managers
-        // instead; admins keep the full Finance section below.
-        ...(canManage && !isAdmin
-          ? [{ href: "/dashboard/finance/services", labelKey: "nav.services" as const, icon: Wrench }]
-          : []),
       ],
     },
     {
       labelKey: "nav.group.operations",
       items: [
         { href: "/dashboard/inventory", labelKey: "nav.inventory", icon: Boxes },
-        ...(canManage
+        ...(can("manage_warehouses")
           ? [{ href: "/dashboard/warehouses", labelKey: "nav.warehouses" as const, icon: Warehouse }]
           : []),
         // Whether the register is open/closed is a daily operational concern
-        // for every role (salespeople need to know before taking cash sales),
-        // not a finance-only concern — so this lives under Operations, not
-        // Finance, and is visible to all roles (actions inside are gated).
+        // for everyone (salespeople need to know before taking cash sales),
+        // so this stays visible regardless of manage_cash_register — the
+        // open/close actions inside are the gated part.
         { href: "/dashboard/finance/register", labelKey: "nav.register" as const, icon: Vault },
       ],
     },
     {
       labelKey: "nav.group.finance",
-      items: isAdmin
-        ? [
-            { href: "/dashboard/finance/services", labelKey: "nav.services" as const, icon: Wrench },
-            { href: "/dashboard/finance/expenses", labelKey: "nav.expenses" as const, icon: Wallet },
-            { href: "/dashboard/finance/partners", labelKey: "nav.partners" as const, icon: Handshake },
-            { href: "/dashboard/finance/report", labelKey: "nav.report" as const, icon: BarChart3 },
-          ]
-        : [],
+      items: [
+        ...(can("manage_services")
+          ? [{ href: "/dashboard/finance/services", labelKey: "nav.services" as const, icon: Wrench }]
+          : []),
+        ...(can("manage_expenses")
+          ? [{ href: "/dashboard/finance/expenses", labelKey: "nav.expenses" as const, icon: Wallet }]
+          : []),
+        ...(can("manage_partners")
+          ? [{ href: "/dashboard/finance/partners", labelKey: "nav.partners" as const, icon: Handshake }]
+          : []),
+        ...(can("view_monthly_report")
+          ? [{ href: "/dashboard/finance/report", labelKey: "nav.report" as const, icon: BarChart3 }]
+          : []),
+      ],
     },
-    ...(isAdmin
+    ...(can("manage_users")
       ? [
           {
             labelKey: "nav.group.admin" as const,
@@ -97,10 +101,13 @@ export function Sidebar({ dict, role }: { dict: Dictionary; role: string }) {
 
   return (
     <aside className="fixed inset-y-0 start-0 z-20 flex w-60 flex-col border-e border-slate-200 bg-white">
-      <div className="flex items-center gap-2 border-b border-slate-200 px-5 py-5">
+      <Link
+        href="/dashboard"
+        className="flex items-center gap-2 border-b border-slate-200 px-5 py-5 hover:bg-slate-50"
+      >
         <Wind className="h-6 w-6 shrink-0 text-blue-600" strokeWidth={2} />
         <span className="truncate text-base font-semibold text-slate-900">{dict["nav.appName"]}</span>
-      </div>
+      </Link>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         {groups

@@ -2,6 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getServerLocale } from "@/lib/i18n/get-server-locale";
+import { displayName } from "@/lib/display-name";
 import { notifyDiscountRequested } from "@/lib/notifications";
 
 type CustomerTier = "wholesale" | "craftsman" | "shop" | "retail";
@@ -168,8 +170,12 @@ export async function saveDraftInvoice(input: SaveDraftInput): Promise<ActionRes
         .select("id, name_en, name_ar")
         .in("id", productIds);
 
+      const locale = await getServerLocale();
       const productNameById = new Map(
-        (discountedProducts ?? []).map((product) => [product.id, product.name_en || product.name_ar])
+        (discountedProducts ?? []).map((product) => [
+          product.id,
+          displayName(product.name_en, product.name_ar, locale),
+        ])
       );
 
       for (const item of discountedItems) {
@@ -183,6 +189,7 @@ export async function saveDraftInvoice(input: SaveDraftInput): Promise<ActionRes
           lineDiscount: Number(item.line_discount ?? 0),
           discountNote: item.discount_note,
           requestedByName: profile.full_name ?? "Salesperson",
+          requestedById: authData.user.id,
         });
       }
     }

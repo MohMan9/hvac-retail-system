@@ -5,7 +5,10 @@ import { InvoiceActions } from "./InvoiceActions";
 import { DraftInvoiceItems } from "./DraftInvoiceItems";
 import { DiscountBadge } from "./discount-badge";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
+import { getEffectivePermissions } from "@/lib/permissions.server";
+import { hasPermission } from "@/lib/permissions";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
+import { displayName } from "@/lib/display-name";
 import { StatusBadge } from "@/components/ui/badge";
 import {
   btnPrimary,
@@ -36,7 +39,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
   const { id } = await params;
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
-  const { dict } = await getServerDictionary();
+  const { dict, locale } = await getServerDictionary();
 
   if (!authData.user) {
     redirect("/signin");
@@ -51,6 +54,8 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
   if (!profile) {
     redirect("/signin");
   }
+
+  const permissions = await getEffectivePermissions();
 
   const { data: invoice } = await supabase
     .from("invoices")
@@ -95,19 +100,27 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
     : { data: [] };
 
   const { data: warehouses } = warehouseIds.length
-    ? await supabase.from("warehouses").select("id, name_en").in("id", warehouseIds)
+    ? await supabase.from("warehouses").select("id, name_en, name_ar").in("id", warehouseIds)
     : { data: [] };
 
   const productNameById = new Map(
-    (products ?? []).map((product) => [product.id, product.name_en || product.name_ar])
+    (products ?? []).map((product) => [product.id, displayName(product.name_en, product.name_ar, locale)])
   );
   const warehouseNameById = new Map(
-    (warehouses ?? []).map((warehouse) => [warehouse.id, warehouse.name_en])
+    (warehouses ?? []).map((warehouse) => [
+      warehouse.id,
+      displayName(warehouse.name_en, warehouse.name_ar, locale),
+    ])
   );
-  const canDecideDiscounts = profile.role === "manager" || profile.role === "admin";
+  // Approving/rejecting a discount is now gated by the granular permission.
+  const canDecideDiscounts = hasPermission(permissions, "approve_reject_discounts");
+  // Editing another salesperson's draft, on the other hand, stays a role-based
+  // seniority concern — there's no granular permission for it, and role is
+  // still meaningful as a seniority label.
+  const isSenior = profile.role === "manager" || profile.role === "admin";
   const canEditItems =
     invoice.status === "draft" &&
-    (canDecideDiscounts || invoice.salesperson_id === authData.user.id);
+    (isSenior || invoice.salesperson_id === authData.user.id);
   const statusKey = statusKeys[invoice.status];
 
   // Only draft invoices can have their lines edited, and only then do we

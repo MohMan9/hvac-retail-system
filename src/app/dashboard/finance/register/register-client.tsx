@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Banknote, CreditCard } from "lucide-react";
 import { closeRegister, openRegister } from "./actions";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
+import { formatShopDateTime } from "@/lib/date";
 import {
   btnPrimary,
   btnSecondary,
@@ -74,7 +75,7 @@ export function RegisterClient({
   canManage: boolean;
   history: HistoryRow[];
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const router = useRouter();
   const [isOpening, setIsOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +113,7 @@ export function RegisterClient({
               {isOpen && (
                 <p className="text-sm text-slate-500">
                   {t("finance.register.openedBy")} {openedByName ?? "—"} ·{" "}
-                  <span dir="ltr">{openedAt}</span>
+                  <span dir="ltr">{formatShopDateTime(openedAt, locale)}</span>
                 </p>
               )}
             </div>
@@ -167,10 +168,10 @@ export function RegisterClient({
                   {history.map((session) => (
                     <tr key={session.id} className={trClass}>
                       <td className={tdClass} dir="ltr">
-                        {session.opened_at}
+                        {formatShopDateTime(session.opened_at, locale)}
                       </td>
                       <td className={tdClass} dir="ltr">
-                        {session.closed_at}
+                        {formatShopDateTime(session.closed_at, locale)}
                       </td>
                       <td className={tdClass} dir="ltr">
                         {formatMoney(session.expected_cash)}

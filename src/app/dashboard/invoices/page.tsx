@@ -35,7 +35,15 @@ const statusLabelKeys: Record<StatusFilter, keyof Dictionary> = {
 };
 
 function parseStatus(value: string | undefined): StatusFilter {
-  return (STATUS_OPTIONS as readonly string[]).includes(value ?? "all")
+  // Return the value only when it's actually one of the known filter options;
+  // otherwise — including the common case where no `status` param is in the
+  // URL yet — fall back to "all". The previous version applied the `?? "all"`
+  // default only inside the membership check and then returned the raw
+  // `value`, so the no-param case yielded `undefined`. That left the hidden
+  // status <input> uncontrolled on first render (value={undefined}) and turned
+  // it controlled once a status was chosen, triggering React's
+  // "changing an uncontrolled input to be controlled" warning.
+  return value !== undefined && (STATUS_OPTIONS as readonly string[]).includes(value)
     ? (value as StatusFilter)
     : "all";
 }

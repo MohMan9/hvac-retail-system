@@ -5,8 +5,21 @@ import { createClient } from "@/lib/supabase/client";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 import { PaymentMethodBadge } from "@/components/ui/badge";
+import { currentMonthInShopTimezone, formatShopDateTime } from "@/lib/date";
 import { DifferenceValue } from "../register/register-client";
 import { btnPrimary, cardClass, inputClass, labelClass, sectionTitleClass, tableWrapClass, tdClass, theadRowClass, thClass } from "@/lib/ui";
+
+// Expense categories are stored as enum strings; map them to the same
+// dictionary keys the expense form uses so the report shows translated
+// labels instead of raw keys like "fixed_setup". Unknown values fall through
+// to the raw string.
+const expenseCategoryKeys: Record<string, keyof Dictionary> = {
+  electricity: "finance.expenses.categoryElectricity",
+  water: "finance.expenses.categoryWater",
+  labor: "finance.expenses.categoryLabor",
+  fixed_setup: "finance.expenses.categoryFixedSetup",
+  misc: "finance.expenses.categoryMisc",
+};
 
 type PartnerDistribution = {
   name: string;
@@ -79,8 +92,8 @@ function StatRow({ label, value }: { label: string; value: string }) {
 }
 
 export function ReportClient({ dict }: { dict: Dictionary }) {
-  const { t } = useLocale();
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const { t, locale } = useLocale();
+  const currentMonth = currentMonthInShopTimezone();
   const [period, setPeriod] = useState(currentMonth);
   const [incomeTaxRate, setIncomeTaxRate] = useState("15");
   const [report, setReport] = useState<MonthlyReport | null>(null);
@@ -189,7 +202,9 @@ export function ReportClient({ dict }: { dict: Dictionary }) {
                 <tbody>
                   {Object.entries(report.expenses_by_category).map(([category, amount]) => (
                     <tr key={category} className="border-b border-slate-100 last:border-0">
-                      <td className={tdClass}>{category}</td>
+                      <td className={tdClass}>
+                        {expenseCategoryKeys[category] ? t(expenseCategoryKeys[category]) : category}
+                      </td>
                       <td className={tdClass} dir="ltr">
                         {formatMoney(amount)}
                       </td>
@@ -343,7 +358,11 @@ export function ReportClient({ dict }: { dict: Dictionary }) {
                             <td className={tdClass} dir="ltr">
                               {expense.expense_date}
                             </td>
-                            <td className={tdClass}>{expense.category}</td>
+                            <td className={tdClass}>
+                              {expenseCategoryKeys[expense.category]
+                                ? t(expenseCategoryKeys[expense.category])
+                                : expense.category}
+                            </td>
                             <td className={tdClass} dir="ltr">
                               {formatMoney(expense.amount)}
                             </td>
@@ -379,10 +398,10 @@ export function ReportClient({ dict }: { dict: Dictionary }) {
                         {report.cash_sessions_detail.map((session, index) => (
                           <tr key={index} className="border-b border-slate-100 last:border-0">
                             <td className={tdClass} dir="ltr">
-                              {session.opened_at}
+                              {formatShopDateTime(session.opened_at, locale)}
                             </td>
                             <td className={tdClass} dir="ltr">
-                              {session.closed_at}
+                              {formatShopDateTime(session.closed_at, locale)}
                             </td>
                             <td className={tdClass} dir="ltr">
                               {formatMoney(session.expected_cash)}

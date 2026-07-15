@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { Package, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -6,6 +7,9 @@ import { parseProductImageStoragePath } from "@/lib/product-images";
 import { Pagination } from "@/components/pagination";
 import { PAGE_SIZE, pageRange, parsePage, sanitizeSearchTerm } from "@/lib/pagination";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
+import { getEffectivePermissions } from "@/lib/permissions.server";
+import { hasPermission } from "@/lib/permissions";
+import { displayName } from "@/lib/display-name";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   btnPrimary,
@@ -46,7 +50,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   const q = sanitizeSearchTerm(rawQ);
   const page = parsePage(pageParam);
   const { from, to } = pageRange(page);
-  const { dict } = await getServerDictionary();
+  const { dict, locale } = await getServerDictionary();
 
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
@@ -55,14 +59,12 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     redirect("/signin");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", authData.user.id)
-    .single();
-
-  const role = profile?.role;
-  const canManage = role === "manager" || role === "admin";
+  // Three independent permissions used to sit behind one role check here:
+  // editing products, and viewing the loaded-cost column, can now be granted
+  // separately.
+  const permissions = await getEffectivePermissions();
+  const canManageProducts = hasPermission(permissions, "manage_products");
+  const canViewLoadedCost = hasPermission(permissions, "view_loaded_cost");
 
   let productsQuery = supabase
     .from("products")
@@ -79,12 +81,18 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   const { data: products, count } = await productsQuery;
   const totalPages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
 
-  const { data: prices } = await supabase
-    .from("product_prices")
-    .select("product_id, price_wholesale, price_craftsman, price_shop, price_retail");
+  const productIds = (products ?? []).map((product) => product.id);
+
+  // Only fetch prices for the products on this page — otherwise this pulls
+  // every price row in the org for a 20-row page.
+  const { data: prices } = productIds.length
+    ? await supabase
+        .from("product_prices")
+        .select("product_id, price_wholesale, price_craftsman, price_shop, price_retail")
+        .in("product_id", productIds)
+    : { data: [] };
 
   const priceByProduct = new Map((prices ?? []).map((p) => [p.product_id, p]));
-  const productIds = (products ?? []).map((product) => product.id);
 
   const { data: productImages } = productIds.length
     ? await supabase
@@ -104,7 +112,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
   let loadedCostByProduct = new Map<string, number>();
 
-  if (canManage) {
+  if (canViewLoadedCost) {
     const { data: costs } = await supabase
       .from("v_product_loaded_cost")
       .select("product_id, loaded_cost");
@@ -120,7 +128,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     <main className="mx-auto max-w-6xl px-8 py-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className={pageTitleClass}>{dict["products.title"]}</h1>
-        {canManage && (
+        {canManageProducts && (
           <Link href="/dashboard/products/new" className={btnPrimary}>
             {dict["products.newButton"]}
           </Link>
@@ -153,8 +161,8 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
         <EmptyState
           icon={Package}
           message={dict["products.notFound"]}
-          actionLabel={canManage ? dict["products.newButton"] : undefined}
-          actionHref={canManage ? "/dashboard/products/new" : undefined}
+          actionLabel={canManageProducts ? dict["products.newButton"] : undefined}
+          actionHref={canManageProducts ? "/dashboard/products/new" : undefined}
         />
       ) : (
         <div className={tableWrapClass}>
@@ -168,14 +176,14 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                 <th className={thClass}>{dict["products.colCraftsman"]}</th>
                 <th className={thClass}>{dict["products.colShop"]}</th>
                 <th className={thClass}>{dict["products.colRetail"]}</th>
-                {canManage && <th className={thClass}>{dict["products.colLoadedCost"]}</th>}
-                {canManage && <th className={thClass}>{dict["products.colActions"]}</th>}
+                {canViewLoadedCost && <th className={thClass}>{dict["products.colLoadedCost"]}</th>}
+                {canManageProducts && <th className={thClass}>{dict["products.colActions"]}</th>}
               </tr>
             </thead>
             <tbody>
               {products?.map((product) => {
                 const price = priceByProduct.get(product.id);
-                const displayName = product.name_en || product.name_ar;
+                const productName = displayName(product.name_en, product.name_ar, locale);
                 const image = pickProductImage(imagesByProduct.get(product.id) ?? []);
                 const imageReference = image
                   ? parseProductImageStoragePath(image.storage_path)
@@ -195,9 +203,11 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                         className="flex items-center gap-3 font-medium text-slate-900 hover:text-blue-600"
                       >
                         {imageUrl ? (
-                          <img
+                          <Image
                             src={imageUrl}
-                            alt={displayName ?? "Product image"}
+                            alt={productName || "Product image"}
+                            width={40}
+                            height={40}
                             className="h-10 w-10 rounded-lg object-cover"
                           />
                         ) : (
@@ -205,7 +215,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                             <Package className="h-4 w-4 text-slate-400" />
                           </span>
                         )}
-                        <span>{displayName}</span>
+                        <span>{productName}</span>
                       </Link>
                     </td>
                     <td className={tdClass} dir="ltr">
@@ -224,12 +234,12 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                     <td className={tdClass} dir="ltr">
                       {price?.price_retail ?? "—"}
                     </td>
-                    {canManage && (
+                    {canViewLoadedCost && (
                       <td className={tdClass} dir="ltr">
                         {loadedCostByProduct.get(product.id) ?? "—"}
                       </td>
                     )}
-                    {canManage && (
+                    {canManageProducts && (
                       <td className={tdClass}>
                         <Link href={`/dashboard/products/${product.id}/edit`} className={linkClass}>
                           {dict["common.edit"]}

@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { ServiceForm } from "./service-form";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
+import { getEffectivePermissions } from "@/lib/permissions.server";
+import { hasPermission } from "@/lib/permissions";
 import { mutedTextClass, pageTitleClass } from "@/lib/ui";
 
 export default async function NewServicePage() {
@@ -8,17 +10,10 @@ export default async function NewServicePage() {
   const { data: authData } = await supabase.auth.getUser();
   const { dict } = await getServerDictionary();
 
-  const { data: profile } = authData.user
-    ? await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", authData.user.id)
-        .single()
-    : { data: null };
+  const permissions = await getEffectivePermissions();
+  const canManage = hasPermission(permissions, "manage_services");
 
-  const canManage = profile?.role === "manager" || profile?.role === "admin";
-
-  if (!authData.user || !profile || !canManage) {
+  if (!authData.user || !canManage) {
     return (
       <main className="mx-auto max-w-md px-8 py-6">
         <p className={mutedTextClass}>{dict["finance.services.notAuthorized"]}</p>

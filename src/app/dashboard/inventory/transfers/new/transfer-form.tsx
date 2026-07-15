@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { createStockTransfer } from "./actions";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
+import { todayInShopTimezone } from "@/lib/date";
+import { displayName } from "@/lib/display-name";
 import { btnPrimary, inputClass, labelClass } from "@/lib/ui";
 
 type Product = { id: string; name_en: string | null; name_ar: string | null };
@@ -15,11 +17,11 @@ export function TransferForm({
   products: Product[];
   warehouses: Warehouse[];
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInShopTimezone();
 
   async function handleSubmit(formData: FormData) {
     setError(null);
@@ -50,7 +52,7 @@ export function TransferForm({
         <select name="product_id" required className={inputClass}>
           {products.map((product) => (
             <option key={product.id} value={product.id}>
-              {product.name_en || product.name_ar}
+              {displayName(product.name_en, product.name_ar, locale)}
             </option>
           ))}
         </select>

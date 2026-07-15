@@ -20,6 +20,7 @@ const exactTitles: Record<string, keyof Dictionary> = {
   "/dashboard/finance/partners": "finance.partners.title",
   "/dashboard/finance/partners/new": "finance.partners.newTitle",
   "/dashboard/finance/report": "finance.report.title",
+  "/dashboard/finance/register": "finance.register.title",
 };
 
 // Dynamic routes (/[id], /[id]/edit) can't be exact-matched — fall back to

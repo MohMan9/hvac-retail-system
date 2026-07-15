@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
+import { getEffectivePermissions } from "@/lib/permissions.server";
+import { hasPermission } from "@/lib/permissions";
 import { RegisterClient } from "./register-client";
 import { pageTitleClass } from "@/lib/ui";
 
@@ -22,7 +24,10 @@ export default async function CashRegisterPage() {
     redirect("/signin");
   }
 
-  const canManage = profile.role === "manager" || profile.role === "admin";
+  // The read-only status card + running total stay visible to everyone; only
+  // the open/close actions and the history table are gated on this.
+  const permissions = await getEffectivePermissions();
+  const canManage = hasPermission(permissions, "manage_cash_register");
   const { dict } = await getServerDictionary();
 
   const { data: openSession } = await supabase
@@ -45,14 +50,17 @@ export default async function CashRegisterPage() {
     openedByName = openerProfile?.full_name ?? null;
 
     // Live preview of what closing would currently compute — the official
-    // total is only locked in by the close_cash_session RPC itself.
+    // total is only locked in by the close_cash_session RPC itself. Filter on
+    // completed_at (when the sale was actually finalized), matching the RPC —
+    // an invoice created before the session opened but completed after it
+    // still belongs to this session.
     const { data: cashInvoices } = await supabase
       .from("invoices")
       .select("total")
       .eq("organization_id", profile.organization_id)
       .eq("status", "completed")
       .eq("payment_method", "cash")
-      .gte("created_at", openSession.opened_at);
+      .gte("completed_at", openSession.opened_at);
 
     runningCashTotal = (cashInvoices ?? []).reduce(
       (sum, invoice) => sum + Number(invoice.total ?? 0),

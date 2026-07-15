@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { Boxes, History } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
+import { getEffectivePermissions } from "@/lib/permissions.server";
+import { hasPermission } from "@/lib/permissions";
+import { displayName } from "@/lib/display-name";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   btnPrimary,
@@ -18,23 +21,18 @@ import {
 export default async function InventoryPage() {
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
-  const { dict } = await getServerDictionary();
+  const { dict, locale } = await getServerDictionary();
 
   if (!authData.user) {
     redirect("/signin");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", authData.user.id)
-    .single();
-
-  const canManage = profile?.role === "manager" || profile?.role === "admin";
+  const permissions = await getEffectivePermissions();
+  const canManage = hasPermission(permissions, "manage_inventory_transfers");
 
   const { data: inventory } = await supabase
     .from("inventory")
-    .select("id, quantity, products(name_en), warehouses(name_en)")
+    .select("id, quantity, products(name_en, name_ar), warehouses(name_en, name_ar)")
     .order("id");
 
   const { data: transfers } = await supabase
@@ -61,13 +59,15 @@ export default async function InventoryPage() {
     : { data: [] };
 
   const { data: transferWarehouses } = warehouseIds.length
-    ? await supabase.from("warehouses").select("id, name_en").in("id", warehouseIds)
+    ? await supabase.from("warehouses").select("id, name_en, name_ar").in("id", warehouseIds)
     : { data: [] };
 
   const productNameById = new Map(
-    (transferProducts ?? []).map((p) => [p.id, p.name_en || p.name_ar])
+    (transferProducts ?? []).map((p) => [p.id, displayName(p.name_en, p.name_ar, locale)])
   );
-  const warehouseNameById = new Map((transferWarehouses ?? []).map((w) => [w.id, w.name_en]));
+  const warehouseNameById = new Map(
+    (transferWarehouses ?? []).map((w) => [w.id, displayName(w.name_en, w.name_ar, locale)])
+  );
 
   return (
     <main className="mx-auto max-w-4xl px-8 py-6">
@@ -97,8 +97,8 @@ export default async function InventoryPage() {
 
                 return (
                   <tr key={row.id} className={trClass}>
-                    <td className={tdClass}>{product?.name_en}</td>
-                    <td className={tdClass}>{warehouse?.name_en}</td>
+                    <td className={tdClass}>{displayName(product?.name_en, product?.name_ar, locale)}</td>
+                    <td className={tdClass}>{displayName(warehouse?.name_en, warehouse?.name_ar, locale)}</td>
                     <td className={tdClass} dir="ltr">
                       {row.quantity}
                     </td>

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { approveDiscount, rejectDiscount } from "@/app/dashboard/invoices/[id]/actions";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
+import type { Dictionary } from "@/lib/i18n/dictionaries";
 import { btnPrimary, btnSecondary, cardClass } from "@/lib/ui";
 
 const POLL_INTERVAL_MS = 30000;
@@ -42,17 +43,31 @@ function formatMoney(value: number) {
   return Number(value ?? 0).toFixed(2);
 }
 
-function buildNotificationText(notification: NotificationRow) {
+function buildNotificationText(
+  notification: NotificationRow,
+  t: (key: keyof Dictionary) => string
+) {
   const data = notification.data;
 
   if (notification.type === "discount_request") {
     const requestData = data as DiscountRequestData;
-    return `${requestData.requested_by_name} requested a ${formatMoney(requestData.line_discount)} discount on ${requestData.product_name} — invoice ${requestData.invoice_number}`;
+    return t("notifications.requestText")
+      .replace("{name}", requestData.requested_by_name)
+      .replace("{amount}", formatMoney(requestData.line_discount))
+      .replace("{product}", requestData.product_name)
+      .replace("{invoice}", requestData.invoice_number);
   }
 
   const decisionData = data as DiscountDecisionData;
-  const verb = notification.type === "discount_approved" ? "approved" : "rejected";
-  return `${decisionData.decided_by_name} ${verb} your ${formatMoney(decisionData.line_discount)} discount on ${decisionData.product_name} — invoice ${decisionData.invoice_number}`;
+  const key =
+    notification.type === "discount_approved"
+      ? "notifications.approvedText"
+      : "notifications.rejectedText";
+  return t(key)
+    .replace("{name}", decisionData.decided_by_name)
+    .replace("{amount}", formatMoney(decisionData.line_discount))
+    .replace("{product}", decisionData.product_name)
+    .replace("{invoice}", decisionData.invoice_number);
 }
 
 function NotificationIcon({ type }: { type: NotificationRow["type"] }) {
@@ -68,7 +83,7 @@ function NotificationIcon({ type }: { type: NotificationRow["type"] }) {
 }
 
 export function NotificationsBell({ initialUnreadCount }: { initialUnreadCount: number }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
   const [isOpen, setIsOpen] = useState(false);
@@ -200,9 +215,9 @@ export function NotificationsBell({ initialUnreadCount }: { initialUnreadCount: 
                     >
                       <NotificationIcon type={notification.type} />
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm text-slate-700">{buildNotificationText(notification)}</p>
+                        <p className="text-sm text-slate-700">{buildNotificationText(notification, t)}</p>
                         <p className="mt-0.5 text-xs text-slate-400">
-                          {formatRelativeTime(notification.created_at)}
+                          {formatRelativeTime(notification.created_at, locale)}
                         </p>
                       </div>
                     </button>
@@ -245,7 +260,7 @@ function DiscountRequestModal({
 
   async function handleDecision(decision: "approve" | "reject") {
     if (!notification.invoice_item_id) {
-      setError("Missing invoice item reference.");
+      setError(t("notifications.missingItemRef"));
       return;
     }
 

@@ -2,9 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getServerLocale } from "@/lib/i18n/get-server-locale";
+import { checkPermission } from "@/lib/permissions.server";
+import { displayName } from "@/lib/display-name";
 import { notifyDiscountDecision, notifyDiscountRequested } from "@/lib/notifications";
 
 type ActionResult = { success: true } | { success: false; error: string };
+
+type CompleteInvoiceResult =
+  | { success: true; cashRegisterClosed: boolean }
+  | { success: false; error: string };
 
 function money(value: number) {
   return Math.round(value * 100) / 100;
@@ -64,7 +71,13 @@ async function getDiscountLineContext(
     .eq("id", item.product_id)
     .single();
 
-  return { item, invoice, productName: product?.name_en || product?.name_ar || "Product" };
+  const locale = await getServerLocale();
+
+  return {
+    item,
+    invoice,
+    productName: displayName(product?.name_en, product?.name_ar, locale) || "Product",
+  };
 }
 
 export async function approveDiscount(invoiceItemId: string): Promise<ActionResult> {
@@ -74,8 +87,8 @@ export async function approveDiscount(invoiceItemId: string): Promise<ActionResu
     return { success: false, error: "Not authenticated" };
   }
 
-  if (profile.role !== "manager" && profile.role !== "admin") {
-    return { success: false, error: "Only managers and admins can approve discounts" };
+  if (!(await checkPermission("approve_reject_discounts"))) {
+    return { success: false, error: "You don't have permission to approve or reject discounts" };
   }
 
   const context = await getDiscountLineContext(supabase, invoiceItemId, profile.organization_id);
@@ -119,8 +132,8 @@ export async function rejectDiscount(invoiceItemId: string): Promise<ActionResul
     return { success: false, error: "Not authenticated" };
   }
 
-  if (profile.role !== "manager" && profile.role !== "admin") {
-    return { success: false, error: "Only managers and admins can reject discounts" };
+  if (!(await checkPermission("approve_reject_discounts"))) {
+    return { success: false, error: "You don't have permission to approve or reject discounts" };
   }
 
   const context = await getDiscountLineContext(supabase, invoiceItemId, profile.organization_id);
@@ -157,26 +170,66 @@ export async function rejectDiscount(invoiceItemId: string): Promise<ActionResul
   return { success: true };
 }
 
-export async function completeInvoice(invoiceId: string): Promise<ActionResult> {
-  const { supabase, profile } = await getCaller();
+export async function completeInvoice(invoiceId: string): Promise<CompleteInvoiceResult> {
+  const { supabase, userId, profile } = await getCaller();
 
-  if (!profile) {
+  if (!userId || !profile) {
     return { success: false, error: "Not authenticated" };
   }
 
-  const { error } = await supabase
+  // Same ownership rule as editing: only the invoice's own salesperson or a
+  // manager/admin may complete it. loadEditableInvoice also enforces the
+  // draft-only precondition and org scoping.
+  const loaded = await loadEditableInvoice(
+    supabase,
+    invoiceId,
+    profile.organization_id,
+    userId,
+    profile.role
+  );
+
+  if ("error" in loaded) {
+    return { success: false, error: loaded.error };
+  }
+
+  // Constrain the UPDATE itself to draft rows (not just the pre-check above):
+  // if two completion attempts race, only the one that flips draft→completed
+  // affects a row; the loser updates zero rows and we surface that.
+  const { data: updated, error } = await supabase
     .from("invoices")
     .update({ status: "completed" })
     .eq("id", invoiceId)
-    .eq("organization_id", profile.organization_id);
+    .eq("organization_id", profile.organization_id)
+    .eq("status", "draft")
+    .select("id, payment_method");
 
   if (error) {
     return { success: false, error: error.message };
   }
 
+  if (!updated || updated.length === 0) {
+    return { success: false, error: "This invoice has already been completed." };
+  }
+
+  // If this was a cash sale but no register session is open, the amount won't
+  // be captured by any register closing. Don't block the sale — just flag it
+  // so the UI can warn instead of the gap being silent.
+  let cashRegisterClosed = false;
+
+  if (updated[0].payment_method === "cash") {
+    const { data: openSession } = await supabase
+      .from("cash_sessions")
+      .select("id")
+      .eq("organization_id", profile.organization_id)
+      .is("closed_at", null)
+      .maybeSingle();
+
+    cashRegisterClosed = !openSession;
+  }
+
   revalidatePath(`/dashboard/invoices/${invoiceId}`);
   revalidatePath("/dashboard/invoices");
-  return { success: true };
+  return { success: true, cashRegisterClosed };
 }
 
 // Recomputes subtotal/discount_total/vat_amount/total from the invoice's
@@ -293,7 +346,7 @@ export async function updateInvoiceItem(
 
   const { data: item } = await supabase
     .from("invoice_items")
-    .select("id, invoice_id, product_id, line_discount, discount_rejected_by")
+    .select("id, invoice_id, product_id, line_discount, discount_rejected_by, discount_approved_by")
     .eq("id", invoiceItemId)
     .single();
 
@@ -344,25 +397,35 @@ export async function updateInvoiceItem(
     return totalsResult;
   }
 
-  // The discount was edited after a previous rejection — it goes back to
-  // "pending" and needs a fresh round of manager/admin approval.
-  if (shouldResetRejection && input.line_discount > 0) {
+  // Whenever this edit leaves the line with a positive, still-unapproved
+  // discount, it needs a fresh round of manager/admin approval. The DB
+  // auto-resets a prior approve/reject decision on any discount change, so a
+  // changed discount is unapproved by definition; we also re-notify if the
+  // line was already sitting unapproved. Guard on `discountChanged` so a
+  // pure quantity/price edit of an already-pending line doesn't spam.
+  const wasApproved = Boolean(item.discount_approved_by);
+  const leavesUnapprovedDiscount = input.line_discount > 0 && (discountChanged || !wasApproved);
+
+  if (discountChanged && leavesUnapprovedDiscount) {
     const { data: product } = await supabase
       .from("products")
       .select("name_en, name_ar")
       .eq("id", item.product_id)
       .single();
 
+    const locale = await getServerLocale();
+
     await notifyDiscountRequested(supabase, {
       organizationId: profile.organization_id,
       invoiceId: loaded.invoice.id,
       invoiceItemId,
       invoiceNumber: loaded.invoice.invoice_number,
-      productName: product?.name_en || product?.name_ar || "Product",
+      productName: displayName(product?.name_en, product?.name_ar, locale) || "Product",
       unitPrice: input.unit_price,
       lineDiscount: input.line_discount,
       discountNote: input.discount_note,
       requestedByName: profile.full_name ?? "Salesperson",
+      requestedById: userId,
     });
   }
 
@@ -495,16 +558,19 @@ export async function addInvoiceItem(
       .eq("id", input.product_id)
       .single();
 
+    const locale = await getServerLocale();
+
     await notifyDiscountRequested(supabase, {
       organizationId: profile.organization_id,
       invoiceId,
       invoiceItemId: newItem.id,
       invoiceNumber: loaded.invoice.invoice_number,
-      productName: product?.name_en || product?.name_ar || "Product",
+      productName: displayName(product?.name_en, product?.name_ar, locale) || "Product",
       unitPrice: input.unit_price,
       lineDiscount: input.line_discount,
       discountNote: input.discount_note,
       requestedByName: profile.full_name ?? "Salesperson",
+      requestedById: userId,
     });
   }
 

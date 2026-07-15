@@ -1,9 +1,13 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { parseProductImageStoragePath } from "@/lib/product-images";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
+import { getEffectivePermissions } from "@/lib/permissions.server";
+import { hasPermission } from "@/lib/permissions";
+import { displayName } from "@/lib/display-name";
 import {
   cardClass,
   linkClass,
@@ -32,7 +36,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
   const { id } = await params;
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
-  const { dict } = await getServerDictionary();
+  const { dict, locale } = await getServerDictionary();
 
   if (!authData.user) {
     redirect("/signin");
@@ -48,7 +52,9 @@ export default async function ProductDetailPage({ params }: PageProps) {
     redirect("/signin");
   }
 
-  const canManage = profile.role === "manager" || profile.role === "admin";
+  const permissions = await getEffectivePermissions();
+  const canManageProducts = hasPermission(permissions, "manage_products");
+  const canViewLoadedCost = hasPermission(permissions, "view_loaded_cost");
 
   const { data: product } = await supabase
     .from("products")
@@ -75,7 +81,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
     .eq("product_id", product.id)
     .order("sort_order", { ascending: true });
 
-  const { data: loadedCost } = canManage
+  const { data: loadedCost } = canViewLoadedCost
     ? await supabase
         .from("v_product_loaded_cost")
         .select("loaded_cost")
@@ -83,15 +89,15 @@ export default async function ProductDetailPage({ params }: PageProps) {
         .single()
     : { data: null };
 
-  const displayName = product.name_en || product.name_ar;
+  const productName = displayName(product.name_en, product.name_ar, locale);
   const unitKey = unitKeys[product.unit_of_measure];
 
   return (
     <main className="mx-auto max-w-5xl px-8 py-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className={pageTitleClass}>{displayName}</h1>
+        <h1 className={pageTitleClass}>{productName}</h1>
         <div className="flex items-center gap-4">
-          {canManage && (
+          {canManageProducts && (
             <Link href={`/dashboard/products/${product.id}/edit`} className={linkClass}>
               {dict["common.edit"]}
             </Link>
@@ -113,12 +119,18 @@ export default async function ProductDetailPage({ params }: PageProps) {
                 .getPublicUrl(imageReference.objectPath).data.publicUrl;
 
               return (
-                <img
+                <div
                   key={image.id}
-                  src={publicUrl}
-                  alt={displayName ?? "Product image"}
-                  className="aspect-square w-full rounded-lg border border-slate-200 object-cover"
-                />
+                  className="relative aspect-square w-full overflow-hidden rounded-lg border border-slate-200"
+                >
+                  <Image
+                    src={publicUrl}
+                    alt={productName || "Product image"}
+                    fill
+                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+                    className="object-cover"
+                  />
+                </div>
               );
             })}
           </div>
@@ -160,7 +172,9 @@ export default async function ProductDetailPage({ params }: PageProps) {
         <div>
           <span className="font-medium text-slate-700">{dict["productDetail.warranty"]}: </span>
           <span className="text-slate-600">
-            {product.warranty_months ?? "—"} {dict["productDetail.months"]}
+            {product.warranty_months
+              ? `${product.warranty_months} ${dict["productDetail.months"]}`
+              : dict["productDetail.noWarranty"]}
           </span>
         </div>
       </section>
@@ -175,7 +189,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
                 <th className={thClass}>{dict["products.colCraftsman"]}</th>
                 <th className={thClass}>{dict["products.colShop"]}</th>
                 <th className={thClass}>{dict["products.colRetail"]}</th>
-                {canManage && <th className={thClass}>{dict["products.colLoadedCost"]}</th>}
+                {canViewLoadedCost && <th className={thClass}>{dict["products.colLoadedCost"]}</th>}
               </tr>
             </thead>
             <tbody>
@@ -192,7 +206,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
                 <td className={tdClass} dir="ltr">
                   {formatMoney(price?.price_retail)}
                 </td>
-                {canManage && (
+                {canViewLoadedCost && (
                   <td className={tdClass} dir="ltr">
                     {formatMoney(loadedCost?.loaded_cost)}
                   </td>

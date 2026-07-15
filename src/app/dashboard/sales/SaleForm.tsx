@@ -7,6 +7,8 @@ import { createCustomer } from "../customers/new/actions";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { Badge } from "@/components/ui/badge";
 import { QuantityStepper } from "@/components/ui/quantity-stepper";
+import { todayInShopTimezone } from "@/lib/date";
+import { displayName } from "@/lib/display-name";
 import { btnPrimary, btnSecondary, cardClass, inputClass, labelClass } from "@/lib/ui";
 
 const DRAFT_STORAGE_KEY = "hvac-sale-draft";
@@ -87,6 +89,23 @@ function parseDecimal(value: string) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+// Re-prices cart lines when the applied tier changes (e.g. picking a customer
+// whose type differs from the current tier). Only lines still sitting at the
+// OLD tier's list price get remapped — a price the salesperson deliberately
+// hand-edited away from the list price is left untouched.
+function repriceCartLines(cart: CartItem[], oldTier: CustomerTier, newTier: CustomerTier) {
+  if (oldTier === newTier) {
+    return cart;
+  }
+
+  return cart.map((item) => {
+    const stillAtOldListPrice = parseDecimal(item.unitPrice) === priceForTier(item.product, oldTier);
+    return stillAtOldListPrice
+      ? { ...item, unitPrice: String(priceForTier(item.product, newTier)) }
+      : item;
+  });
+}
+
 export function SaleForm({
   products,
   customers,
@@ -102,58 +121,60 @@ export function SaleForm({
   vatRate: number;
   stock: StockRow[];
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+
+  // Restore an in-progress sale left in sessionStorage (e.g. after an
+  // accidental reload or navigating away) so nothing gets lost. Read it once
+  // here so it can seed the initial state via lazy `useState` initializers —
+  // doing this synchronously (rather than in a useEffect that calls setState)
+  // avoids the cascading extra render React warns about. Returns null on the
+  // server, where sessionStorage doesn't exist.
+  const restoredDraft = useMemo(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+    try {
+      const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY);
+      return raw ? (JSON.parse(raw) as DraftSnapshot) : null;
+    } catch {
+      // Corrupted or unavailable sessionStorage: start from a blank sale.
+      return null;
+    }
+    // Read once on mount; the persist effect below is the source of truth
+    // afterwards, so we deliberately don't re-run this.
+  }, []);
+
   const [barcode, setBarcode] = useState("");
   const [barcodeMessage, setBarcodeMessage] = useState<string | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerList, setCustomerList] = useState<Customer[]>(customers);
-  const [customerId, setCustomerId] = useState("");
-  const [appliedTier, setAppliedTier] = useState<CustomerTier>("retail");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [customerId, setCustomerId] = useState(() => restoredDraft?.customerId ?? "");
+  const [appliedTier, setAppliedTier] = useState<CustomerTier>(
+    () => restoredDraft?.appliedTier ?? "retail"
+  );
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    () => restoredDraft?.paymentMethod ?? "cash"
+  );
+  const [cart, setCart] = useState<CartItem[]>(() =>
+    (restoredDraft?.cart ?? []).map((item) => ({
+      ...item,
+      product: products.find((product) => product.id === item.product.id) ?? item.product,
+    }))
+  );
   const [expandedDiscounts, setExpandedDiscounts] = useState<Set<string>>(new Set());
-  const [serviceLines, setServiceLines] = useState<ServiceLine[]>([]);
-  const [note, setNote] = useState("");
+  const [serviceLines, setServiceLines] = useState<ServiceLine[]>(
+    () => restoredDraft?.serviceLines ?? []
+  );
+  const [note, setNote] = useState(() => restoredDraft?.note ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isNewCustomerModalOpen, setIsNewCustomerModalOpen] = useState(false);
-  const [isRestored, setIsRestored] = useState(false);
   const barcodeRef = useRef<HTMLInputElement>(null);
 
-  // Restore an in-progress sale left in sessionStorage (e.g. after an
-  // accidental reload or navigating away) so nothing gets lost.
+  // Persist the in-progress sale as it changes. The initial state already
+  // reflects any restored draft (via the lazy initializers above), so writing
+  // it straight back on first run is harmless/idempotent.
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as DraftSnapshot;
-        setCart(
-          saved.cart.map((item) => ({
-            ...item,
-            product: products.find((product) => product.id === item.product.id) ?? item.product,
-          }))
-        );
-        setServiceLines(saved.serviceLines ?? []);
-        setCustomerId(saved.customerId ?? "");
-        setAppliedTier(saved.appliedTier ?? "retail");
-        setPaymentMethod(saved.paymentMethod ?? "cash");
-        setNote(saved.note ?? "");
-      }
-    } catch {
-      // Corrupted or unavailable sessionStorage: start from a blank sale.
-    }
-    setIsRestored(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Persist the in-progress sale as it changes, once the initial restore
-  // above has run (otherwise this would immediately overwrite the saved
-  // draft with the blank initial state before it's had a chance to load).
-  useEffect(() => {
-    if (!isRestored) {
-      return;
-    }
-
     const snapshot: DraftSnapshot = {
       cart,
       serviceLines,
@@ -163,7 +184,7 @@ export function SaleForm({
       note,
     };
     sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(snapshot));
-  }, [isRestored, cart, serviceLines, customerId, appliedTier, paymentMethod, note]);
+  }, [cart, serviceLines, customerId, appliedTier, paymentMethod, note]);
 
   const stockByProduct = useMemo(() => {
     const map = new Map<string, { warehouseId: string; quantity: number }[]>();
@@ -226,7 +247,11 @@ export function SaleForm({
   function handleCustomerChange(nextCustomerId: string) {
     setCustomerId(nextCustomerId);
     const customer = customerList.find((item) => item.id === nextCustomerId);
-    setAppliedTier(customer?.customer_type ?? "retail");
+    const nextTier = customer?.customer_type ?? "retail";
+    // Re-price existing cart lines for the newly-selected customer's tier,
+    // preserving any hand-edited prices (see repriceCartLines).
+    setCart((current) => repriceCartLines(current, appliedTier, nextTier));
+    setAppliedTier(nextTier);
   }
 
   function handleCustomerCreated(customer: Customer) {
@@ -234,6 +259,7 @@ export function SaleForm({
       [...current, customer].sort((a, b) => a.name.localeCompare(b.name))
     );
     setCustomerId(customer.id);
+    setCart((current) => repriceCartLines(current, appliedTier, customer.customer_type));
     setAppliedTier(customer.customer_type);
     setIsNewCustomerModalOpen(false);
   }
@@ -284,7 +310,7 @@ export function SaleForm({
     const product = products.find((item) => item.barcode === code);
 
     if (!product) {
-      setBarcodeMessage(`No product found for barcode ${code}.`);
+      setBarcodeMessage(`${t("sales.barcodeNotFound")} (${code})`);
       setBarcode("");
       return;
     }
@@ -334,7 +360,7 @@ export function SaleForm({
     const service = services.find((item) => item.id === serviceId);
     updateServiceLine(rowId, {
       serviceId,
-      description: service ? service.name_en || service.name_ar || "" : "",
+      description: service ? displayName(service.name_en, service.name_ar, locale) : "",
       price: service ? String(service.default_price) : "0",
     });
   }
@@ -343,13 +369,13 @@ export function SaleForm({
     setError(null);
 
     if (cart.length === 0 && serviceLines.length === 0) {
-      setError("Add at least one product or service before saving.");
+      setError(t("sales.addAtLeastOne"));
       barcodeRef.current?.focus();
       return;
     }
 
     if (cart.some((item) => !item.warehouseId)) {
-      setError("Choose a warehouse for every product line.");
+      setError(t("sales.chooseWarehouseAll"));
       return;
     }
 
@@ -364,7 +390,7 @@ export function SaleForm({
       customer_id: customerId || null,
       applied_tier: appliedTier,
       payment_method: paymentMethod,
-      sale_date: new Date().toISOString().slice(0, 10),
+      sale_date: todayInShopTimezone(),
       note: note.trim() || null,
       items: cart.map((item) => ({
         product_id: item.product.id,
@@ -443,7 +469,7 @@ export function SaleForm({
                   <li key={item.rowId} className="border-b border-slate-100 p-4 last:border-0">
                     <div className="flex items-center gap-3">
                       <p className="min-w-0 flex-1 truncate font-medium text-slate-900">
-                        {item.product.name_en || item.product.name_ar}
+                        {displayName(item.product.name_en, item.product.name_ar, locale)}
                       </p>
                       <QuantityStepper
                         value={item.quantity}
@@ -578,7 +604,7 @@ export function SaleForm({
                     <option value="">{t("sales.customService")}</option>
                     {services.map((service) => (
                       <option key={service.id} value={service.id}>
-                        {service.name_en || service.name_ar}
+                        {displayName(service.name_en, service.name_ar, locale)}
                       </option>
                     ))}
                   </select>

@@ -15,7 +15,21 @@ export async function signIn(formData: FormData): Promise<SignInResult> {
     await supabase.auth.signInWithPassword({ email, password });
 
   if (signInError || !authData.user) {
-    return { success: false, error: signInError?.message ?? "Invalid email or password" };
+    // Never surface the raw Supabase message to the cashier — log it for
+    // debugging and return a stable, translatable error CODE instead. Bad
+    // credentials are the overwhelmingly common case; anything else falls
+    // back to a generic message.
+    if (signInError) {
+      console.error("[signin] auth error:", signInError.code ?? "", signInError.message);
+    }
+
+    const isInvalidCredentials =
+      !authData?.user || signInError?.code === "invalid_credentials";
+
+    return {
+      success: false,
+      error: isInvalidCredentials ? "err.invalidCredentials" : "err.signInFailed",
+    };
   }
 
   // Look up the caller's role to decide where to send them.
@@ -27,7 +41,10 @@ export async function signIn(formData: FormData): Promise<SignInResult> {
     .single();
 
   if (profileError || !profile) {
-    return { success: false, error: "No profile found for this account" };
+    if (profileError) {
+      console.error("[signin] profile lookup error:", profileError.message);
+    }
+    return { success: false, error: "err.noProfile" };
   }
 
   // RLS can't block a Supabase Auth session from being created in the first
@@ -35,7 +52,7 @@ export async function signIn(formData: FormData): Promise<SignInResult> {
   // to be enforced here, right after sign-in, by immediately signing back out.
   if (profile.is_active === false) {
     await supabase.auth.signOut();
-    return { success: false, error: "This account has been deactivated." };
+    return { success: false, error: "signin.deactivated" };
   }
 
   // All roles land on /dashboard; admins reach /admin via the nav link there

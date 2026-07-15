@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { updateUserRole, toggleUserActive } from "./actions";
+import { EditPermissionsModal } from "./edit-permissions-modal";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 import { ActiveBadge } from "@/components/ui/badge";
@@ -39,6 +40,7 @@ export function UserList({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [errorById, setErrorById] = useState<Record<string, string>>({});
   const [successById, setSuccessById] = useState<Record<string, boolean>>({});
+  const [editingUser, setEditingUser] = useState<UserRow | null>(null);
 
   async function handleRoleChange(userId: string, role: string) {
     setPendingId(userId);
@@ -48,7 +50,9 @@ export function UserList({
     const result = await updateUserRole(userId, role);
 
     if (!result.success) {
-      setErrorById((current) => ({ ...current, [userId]: result.error }));
+      // Actions return a stable error code (dictionary key); t() falls back to
+      // the raw string for any opaque DB message that isn't a known code.
+      setErrorById((current) => ({ ...current, [userId]: t(result.error as keyof Dictionary) }));
     } else {
       setSuccessById((current) => ({ ...current, [userId]: true }));
       router.refresh();
@@ -64,7 +68,7 @@ export function UserList({
     const result = await toggleUserActive(userId, nextActive);
 
     if (!result.success) {
-      setErrorById((current) => ({ ...current, [userId]: result.error }));
+      setErrorById((current) => ({ ...current, [userId]: t(result.error as keyof Dictionary) }));
     } else {
       router.refresh();
     }
@@ -73,6 +77,7 @@ export function UserList({
   }
 
   return (
+    <>
     <div className={tableWrapClass}>
       <table className="w-full border-collapse text-sm">
         <thead>
@@ -111,18 +116,27 @@ export function UserList({
                   <ActiveBadge isActive={user.is_active} dict={dict} />
                 </td>
                 <td className={tdClass}>
-                  {isSelf ? (
-                    <span className="text-xs text-slate-400">{t("admin.currentUser")}</span>
-                  ) : (
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      disabled={pendingId === user.id}
-                      onClick={() => handleToggleActive(user.id, !user.is_active)}
-                      className={user.is_active ? btnDestructiveOutlineSm : btnSecondarySm}
+                      onClick={() => setEditingUser(user)}
+                      className={btnSecondarySm}
                     >
-                      {user.is_active ? t("admin.deactivate") : t("admin.activate")}
+                      {t("admin.editPermissions")}
                     </button>
-                  )}
+                    {isSelf ? (
+                      <span className="text-xs text-slate-400">{t("admin.currentUser")}</span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={pendingId === user.id}
+                        onClick={() => handleToggleActive(user.id, !user.is_active)}
+                        className={user.is_active ? btnDestructiveOutlineSm : btnSecondarySm}
+                      >
+                        {user.is_active ? t("admin.deactivate") : t("admin.activate")}
+                      </button>
+                    )}
+                  </div>
                   {errorById[user.id] && (
                     <p className="mt-1 text-xs text-red-600">{errorById[user.id]}</p>
                   )}
@@ -133,5 +147,18 @@ export function UserList({
         </tbody>
       </table>
     </div>
+
+    {editingUser && (
+      <EditPermissionsModal
+        userId={editingUser.id}
+        userName={editingUser.full_name ?? editingUser.email ?? editingUser.id}
+        onClose={() => setEditingUser(null)}
+        onSaved={() => {
+          setEditingUser(null);
+          router.refresh();
+        }}
+      />
+    )}
+    </>
   );
 }

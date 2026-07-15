@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { Warehouse as WarehouseIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
+import { getEffectivePermissions } from "@/lib/permissions.server";
+import { hasPermission } from "@/lib/permissions";
 import { ClickableRow } from "@/components/ui/clickable-row";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -31,13 +33,9 @@ export default async function WarehousesPage({ searchParams }: PageProps) {
     redirect("/signin");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", authData.user.id)
-    .single();
+  const permissions = await getEffectivePermissions();
 
-  if (!profile || (profile.role !== "manager" && profile.role !== "admin")) {
+  if (!hasPermission(permissions, "manage_warehouses")) {
     return (
       <main className="mx-auto max-w-2xl px-8 py-6">
         <p className={mutedTextClass}>{dict["warehouses.notAuthorized"]}</p>

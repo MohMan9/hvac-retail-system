@@ -2,6 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { WarehouseEditForm } from "./warehouse-edit-form";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
+import { getEffectivePermissions } from "@/lib/permissions.server";
+import { hasPermission } from "@/lib/permissions";
 import { mutedTextClass, pageTitleClass } from "@/lib/ui";
 
 type PageProps = {
@@ -20,11 +22,13 @@ export default async function EditWarehousePage({ params }: PageProps) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, organization_id")
+    .select("organization_id")
     .eq("id", authData.user.id)
     .single();
 
-  if (!profile || (profile.role !== "manager" && profile.role !== "admin")) {
+  const permissions = await getEffectivePermissions();
+
+  if (!profile || !hasPermission(permissions, "manage_warehouses")) {
     return (
       <main className="mx-auto max-w-md px-8 py-6">
         <p className={mutedTextClass}>{dict["warehouses.notAuthorized"]}</p>

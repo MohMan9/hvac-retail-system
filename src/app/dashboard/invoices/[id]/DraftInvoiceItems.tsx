@@ -6,6 +6,7 @@ import { AlertTriangle, Check, Pencil, Plus, X } from "lucide-react";
 import { addInvoiceItem, approveDiscount, rejectDiscount, removeInvoiceItem, updateInvoiceItem } from "./actions";
 import { DiscountBadge } from "./discount-badge";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
+import { displayName } from "@/lib/display-name";
 import { QuantityStepper } from "@/components/ui/quantity-stepper";
 import {
   btnPrimarySm,
@@ -88,7 +89,7 @@ export function DraftInvoiceItems({
   canEditItems: boolean;
   canDecideDiscounts: boolean;
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const router = useRouter();
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -202,7 +203,7 @@ export function DraftInvoiceItems({
     const product = products.find((item) => item.barcode === code);
 
     if (!product) {
-      setAddMessage(`No product found for barcode ${code}.`);
+      setAddMessage(`${t("sales.barcodeNotFound")} (${code})`);
       setAddBarcode("");
       return;
     }
@@ -466,7 +467,7 @@ export function DraftInvoiceItems({
               ) : (
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="font-medium text-slate-900">
-                    {addProduct.name_en || addProduct.name_ar}
+                    {displayName(addProduct.name_en, addProduct.name_ar, locale)}
                   </span>
                   <select
                     value={addWarehouseId}

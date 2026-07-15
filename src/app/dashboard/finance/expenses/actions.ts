@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { checkPermission } from "@/lib/permissions.server";
 
 type CreateExpenseResult = { success: false; error: string };
 
@@ -18,14 +19,18 @@ export async function createExpense(formData: FormData): Promise<CreateExpenseRe
     return { success: false, error: "Not authenticated" };
   }
 
+  if (!(await checkPermission("manage_expenses"))) {
+    return { success: false, error: "You don't have permission to manage expenses" };
+  }
+
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, organization_id")
+    .select("organization_id")
     .eq("id", authData.user.id)
     .single();
 
-  if (!profile || profile.role !== "admin") {
-    return { success: false, error: "Only admins can create expenses" };
+  if (!profile) {
+    return { success: false, error: "No profile found for this account" };
   }
 
   const { error } = await supabase.from("expenses").insert({

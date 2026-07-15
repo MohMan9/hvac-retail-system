@@ -25,15 +25,16 @@ type InitialValues = {
 const fieldsetClass = "rounded-lg border border-slate-200 p-4";
 const legendClass = "px-1 text-sm font-medium text-slate-700";
 
-// isAdmin is decided server-side (page.tsx) and passed in as a prop, so the
-// cost section is never even rendered to a non-admin — not just CSS-hidden.
+// canViewCosts (the view_product_costs permission) is decided server-side
+// (page.tsx) and passed in as a prop, so the cost section is never even
+// rendered to an unauthorized user — not just CSS-hidden.
 export function ProductEditForm({
   productId,
-  isAdmin,
+  canViewCosts,
   initialValues,
 }: {
   productId: string;
-  isAdmin: boolean;
+  canViewCosts: boolean;
   initialValues: InitialValues;
 }) {
   const { t } = useLocale();
@@ -195,7 +196,7 @@ export function ProductEditForm({
         </div>
       </fieldset>
 
-      {isAdmin && (
+      {canViewCosts && (
         <fieldset className={fieldsetClass}>
           <legend className={legendClass}>{t("productForm.costLegend")}</legend>
 

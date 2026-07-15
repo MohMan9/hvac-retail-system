@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { checkPermission } from "@/lib/permissions.server";
 
 type CreateServiceResult = { success: false; error: string };
 
@@ -18,14 +19,18 @@ export async function createService(formData: FormData): Promise<CreateServiceRe
     return { success: false, error: "Not authenticated" };
   }
 
+  if (!(await checkPermission("manage_services"))) {
+    return { success: false, error: "You don't have permission to manage services" };
+  }
+
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, organization_id")
+    .select("organization_id")
     .eq("id", authData.user.id)
     .single();
 
-  if (!profile || (profile.role !== "manager" && profile.role !== "admin")) {
-    return { success: false, error: "Only managers and admins can create services" };
+  if (!profile) {
+    return { success: false, error: "No profile found for this account" };
   }
 
   const { error } = await supabase.from("services").insert({

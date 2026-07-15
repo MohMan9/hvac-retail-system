@@ -10,7 +10,7 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
-    "@react-pdf/renderer": "^4.5.1",
+    "@react-pdf/renderer": "4.5.1",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.110.2",
     "lucide-react": "^1.24.0",

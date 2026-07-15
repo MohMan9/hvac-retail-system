@@ -10,15 +10,15 @@ type Warehouse = { id: string; name_en: string | null };
 const fieldsetClass = "rounded-lg border border-slate-200 p-4";
 const legendClass = "px-1 text-sm font-medium text-slate-700";
 
-// Role flags are decided server-side (page.tsx) and passed in as props, so
-// protected sections are never rendered to unauthorized users.
+// Permission flags are decided server-side (page.tsx) and passed in as props,
+// so protected sections are never rendered to unauthorized users.
 export function ProductForm({
   canManage,
-  isAdmin,
+  canViewCosts,
   warehouses,
 }: {
   canManage: boolean;
-  isAdmin: boolean;
+  canViewCosts: boolean;
   warehouses: Warehouse[];
 }) {
   const { t } = useLocale();
@@ -175,7 +175,7 @@ export function ProductForm({
         </fieldset>
       )}
 
-      {isAdmin && (
+      {canViewCosts && (
         <fieldset className={fieldsetClass}>
           <legend className={legendClass}>{t("productForm.costLegend")}</legend>
 

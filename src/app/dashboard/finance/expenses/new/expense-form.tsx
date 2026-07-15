@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createExpense } from "../actions";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
+import { todayInShopTimezone } from "@/lib/date";
 import { btnPrimary, inputClass, labelClass } from "@/lib/ui";
 
 const categories = [
@@ -26,7 +27,7 @@ export function ExpenseForm() {
   const { t } = useLocale();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInShopTimezone();
 
   async function handleSubmit(formData: FormData) {
     setError(null);

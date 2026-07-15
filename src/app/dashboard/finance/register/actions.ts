@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { checkPermission } from "@/lib/permissions.server";
 
 type OpenResult = { success: true } | { success: false; error: string };
 
@@ -13,14 +14,8 @@ export async function openRegister(): Promise<OpenResult> {
     return { success: false, error: "Not authenticated" };
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", authData.user.id)
-    .single();
-
-  if (!profile || (profile.role !== "manager" && profile.role !== "admin")) {
-    return { success: false, error: "Only managers and admins can open the cash register" };
+  if (!(await checkPermission("manage_cash_register"))) {
+    return { success: false, error: "You don't have permission to manage the cash register" };
   }
 
   const { error } = await supabase.rpc("open_cash_session");
@@ -57,19 +52,22 @@ export async function closeRegister(
     return { success: false, error: "Not authenticated" };
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", authData.user.id)
-    .single();
-
-  if (!profile || (profile.role !== "manager" && profile.role !== "admin")) {
-    return { success: false, error: "Only managers and admins can close the cash register" };
+  if (!(await checkPermission("manage_cash_register"))) {
+    return { success: false, error: "You don't have permission to manage the cash register" };
   }
+
+  // Re-validate server-side (the client already checks this, but the action is
+  // directly callable): the counted amount must be a finite, non-negative
+  // number, and notes are capped to a reasonable length.
+  if (!Number.isFinite(actualCashCounted) || actualCashCounted < 0) {
+    return { success: false, error: "Enter a valid, non-negative amount." };
+  }
+
+  const trimmedNotes = notes?.trim() ? notes.trim().slice(0, 500) : null;
 
   const { data, error } = await supabase.rpc("close_cash_session", {
     p_actual_cash_counted: actualCashCounted,
-    p_notes: notes,
+    p_notes: trimmedNotes,
   });
 
   if (error) {

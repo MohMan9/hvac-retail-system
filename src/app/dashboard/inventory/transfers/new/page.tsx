@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { TransferForm } from "./transfer-form";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
+import { getEffectivePermissions } from "@/lib/permissions.server";
+import { hasPermission } from "@/lib/permissions";
 import { mutedTextClass, pageTitleClass } from "@/lib/ui";
 
 export default async function NewStockTransferPage() {
@@ -13,13 +15,9 @@ export default async function NewStockTransferPage() {
     redirect("/signin");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", authData.user.id)
-    .single();
+  const permissions = await getEffectivePermissions();
 
-  if (!profile || (profile.role !== "manager" && profile.role !== "admin")) {
+  if (!hasPermission(permissions, "manage_inventory_transfers")) {
     return (
       <main className="mx-auto max-w-2xl px-8 py-6">
         <p className={mutedTextClass}>{dict["transfers.notAuthorized"]}</p>

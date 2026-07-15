@@ -3,6 +3,9 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowDownToLine, ArrowUpFromLine, Package2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
+import { getEffectivePermissions } from "@/lib/permissions.server";
+import { hasPermission } from "@/lib/permissions";
+import { displayName } from "@/lib/display-name";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   linkClass,
@@ -24,7 +27,7 @@ export default async function WarehouseDetailPage({ params }: PageProps) {
   const { id } = await params;
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
-  const { dict } = await getServerDictionary();
+  const { dict, locale } = await getServerDictionary();
 
   if (!authData.user) {
     redirect("/signin");
@@ -32,11 +35,13 @@ export default async function WarehouseDetailPage({ params }: PageProps) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, organization_id")
+    .select("organization_id")
     .eq("id", authData.user.id)
     .single();
 
-  if (!profile || (profile.role !== "manager" && profile.role !== "admin")) {
+  const permissions = await getEffectivePermissions();
+
+  if (!profile || !hasPermission(permissions, "manage_warehouses")) {
     return (
       <main className="mx-auto max-w-2xl px-8 py-6">
         <p className={mutedTextClass}>{dict["warehouses.notAuthorized"]}</p>
@@ -73,14 +78,17 @@ export default async function WarehouseDetailPage({ params }: PageProps) {
     ? await supabase.from("products").select("id, name_en, name_ar").in("id", productIds)
     : { data: [] };
   const productNameById = new Map(
-    (transferProducts ?? []).map((product) => [product.id, product.name_en || product.name_ar])
+    (transferProducts ?? []).map((product) => [
+      product.id,
+      displayName(product.name_en, product.name_ar, locale),
+    ])
   );
 
   return (
     <main className="mx-auto max-w-5xl px-8 py-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className={pageTitleClass}>{warehouse.name_en || warehouse.name_ar}</h1>
+          <h1 className={pageTitleClass}>{displayName(warehouse.name_en, warehouse.name_ar, locale)}</h1>
           <p className={mutedTextClass}>{warehouse.location ?? "—"}</p>
         </div>
         <div className="flex items-center gap-4">
@@ -109,7 +117,7 @@ export default async function WarehouseDetailPage({ params }: PageProps) {
 
                 return (
                   <tr key={row.id} className={trClass}>
-                    <td className={tdClass}>{product?.name_en || product?.name_ar}</td>
+                    <td className={tdClass}>{displayName(product?.name_en, product?.name_ar, locale)}</td>
                     <td className={tdClass} dir="ltr">
                       {row.quantity}
                     </td>

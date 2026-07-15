@@ -1,4 +1,5 @@
 import type { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -12,23 +13,49 @@ type DiscountRequestParams = {
   lineDiscount: number;
   discountNote: string | null;
   requestedByName: string;
+  requestedById: string;
 };
 
-// Notifies every manager/admin in the org that a discount line needs a
-// decision. Called both when a new invoice is first saved with discounted
-// lines (Task 1) and when an existing draft line's discount is edited after
-// a prior rejection (Task 4), so it's centralized here for reuse.
+// Notifies everyone in the org who can actually decide discounts that a line
+// needs a decision. Targeting is now by the approve_reject_discounts PERMISSION
+// (not by role): a salesperson granted it should be notified, and a manager who
+// had it revoked should not. The lookup uses the admin client because the
+// requester (often a salesperson) can't read other users' user_permissions
+// under RLS — this is a read-only "who should I notify" query.
 export async function notifyDiscountRequested(
   supabase: SupabaseServerClient,
   params: DiscountRequestParams
 ) {
-  const { data: approvers } = await supabase
+  const adminClient = createAdminClient();
+
+  // Two-step (rather than a PostgREST embed) so we don't depend on a detectable
+  // FK from user_permissions to profiles: first the users who hold the
+  // permission, then narrow to active users in the same org.
+  const { data: permissionRows } = await adminClient
+    .from("user_permissions")
+    .select("user_id")
+    .eq("permission_key", "approve_reject_discounts")
+    .eq("granted", true)
+    // Don't notify the requester themselves (someone with the permission can
+    // request a discount on their own sale).
+    .neq("user_id", params.requestedById);
+
+  const candidateIds = [...new Set((permissionRows ?? []).map((row) => row.user_id))];
+
+  if (candidateIds.length === 0) {
+    return;
+  }
+
+  const { data: activeApprovers } = await adminClient
     .from("profiles")
     .select("id")
+    .in("id", candidateIds)
     .eq("organization_id", params.organizationId)
-    .in("role", ["manager", "admin"]);
+    .eq("is_active", true);
 
-  if (!approvers || approvers.length === 0) {
+  const approvers = activeApprovers ?? [];
+
+  if (approvers.length === 0) {
     return;
   }
 

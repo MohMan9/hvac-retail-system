@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { checkPermission } from "@/lib/permissions.server";
 import { redirect } from "next/navigation";
 
 type CreateStockTransferResult = { success: false; error: string };
@@ -11,6 +12,12 @@ export async function createStockTransfer(formData: FormData): Promise<CreateSto
 
   if (!authData.user) {
     return { success: false, error: "Not authenticated" };
+  }
+
+  // The page already gates this, but re-check here too — the page check alone
+  // doesn't stop a direct call to this action (RLS is the real backstop).
+  if (!(await checkPermission("manage_inventory_transfers"))) {
+    return { success: false, error: "You don't have permission to transfer stock" };
   }
 
   const { data: profile } = await supabase
@@ -29,6 +36,21 @@ export async function createStockTransfer(formData: FormData): Promise<CreateSto
   const quantity = Number(formData.get("quantity"));
   const transferDate = formData.get("transfer_date") as string;
   const note = (formData.get("note") as string) || null;
+
+  // Validate inputs server-side — a tampered form could otherwise submit a
+  // zero/negative/non-numeric quantity, a blank product, or an
+  // external→external transfer (both warehouses null) that moves nothing.
+  if (!productId) {
+    return { success: false, error: "Choose a product." };
+  }
+
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    return { success: false, error: "Enter a positive quantity." };
+  }
+
+  if (!fromWarehouseId && !toWarehouseId) {
+    return { success: false, error: "Choose a source or destination warehouse." };
+  }
 
   // Re-check server-side too — the client-side check is only a UX shortcut.
   if (fromWarehouseId && toWarehouseId && fromWarehouseId === toWarehouseId) {

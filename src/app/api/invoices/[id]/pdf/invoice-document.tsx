@@ -49,7 +49,13 @@ export type InvoicePdfData = {
 const styles = StyleSheet.create({
   page: {
     padding: 32,
-    fontFamily: "Roboto",
+    // Font fallback (react-pdf 4.x accepts an array): Latin text renders in
+    // Roboto, and any glyph Roboto lacks — i.e. Arabic anywhere in the
+    // document (organization name, customer name, service descriptions,
+    // product names) — falls back to Noto Naskh Arabic. Previously only the
+    // productNameAr field had the Arabic font, so Arabic in every other field
+    // rendered as blank boxes.
+    fontFamily: ["Roboto", "NotoNaskhArabic"],
     fontSize: 10,
     color: "#111111",
   },

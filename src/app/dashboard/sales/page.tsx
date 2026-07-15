@@ -1,12 +1,10 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { SaleForm } from "./SaleForm";
-import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 
 export default async function SalesPage() {
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
-  const { dict } = await getServerDictionary();
 
   if (!authData.user) {
     redirect("/signin");

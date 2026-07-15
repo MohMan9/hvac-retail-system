@@ -6,6 +6,8 @@ import {
   cleanProductImageFilename,
   PRODUCT_IMAGE_BUCKETS,
 } from "@/lib/product-images";
+import { todayInShopTimezone } from "@/lib/date";
+import { checkPermission } from "@/lib/permissions.server";
 import { redirect } from "next/navigation";
 
 type CreateProductResult = { success: false; error: string };
@@ -18,18 +20,18 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
     return { success: false, error: "Not authenticated" };
   }
 
+  if (!(await checkPermission("manage_products"))) {
+    return { success: false, error: "You don't have permission to manage products" };
+  }
+
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, organization_id")
+    .select("organization_id")
     .eq("id", authData.user.id)
     .single();
 
   if (!profile) {
     return { success: false, error: "No profile found for this account" };
-  }
-
-  if (profile.role !== "manager" && profile.role !== "admin") {
-    return { success: false, error: "Only managers and admins can create products" };
   }
 
   const name_ar = formData.get("name_ar") as string;
@@ -132,11 +134,11 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
     };
   }
 
-  // 3) Cost fields are admin-only both to view and to submit. Even if a
-  //    tampered client sent these fields anyway, RLS on product_costs blocks
-  //    non-admins from writing here regardless — this check is just to avoid
-  //    a pointless insert attempt for non-admins.
-  if (profile.role === "admin") {
+  // 3) Cost fields require view_product_costs both to view and to submit. Even
+  //    if a tampered client sent these fields anyway, RLS on product_costs
+  //    blocks users without the permission from writing here regardless — this
+  //    check just avoids a pointless insert attempt for unauthorized users.
+  if (await checkPermission("view_product_costs")) {
     const factoryRaw = formData.get("factory_price") as string;
     const shippingRaw = formData.get("shipping_cost") as string;
     const customsRaw = formData.get("customs_cost") as string;
@@ -179,7 +181,7 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
       from_warehouse_id: null,
       to_warehouse_id: initialWarehouseId,
       quantity: initialQuantity,
-      transfer_date: new Date().toISOString().slice(0, 10),
+      transfer_date: todayInShopTimezone(),
       note: "Initial stock",
       created_by: authData.user.id,
     });

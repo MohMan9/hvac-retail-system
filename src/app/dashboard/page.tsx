@@ -2,6 +2,10 @@ import { redirect } from "next/navigation";
 import { DollarSign, PackageX, Receipt, TrendingUp, Vault, type LucideIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
+import { monthStartInShopTimezone, todayInShopTimezone } from "@/lib/date";
+import { getEffectivePermissions } from "@/lib/permissions.server";
+import { hasPermission } from "@/lib/permissions";
+import { displayName } from "@/lib/display-name";
 import { cardClass, pageTitleClass, sectionTitleClass } from "@/lib/ui";
 
 // Products with total inventory (summed across all warehouses) below this
@@ -62,10 +66,13 @@ export default async function DashboardPage() {
     redirect("/signin");
   }
 
-  const { dict } = await getServerDictionary();
-  const canManage = profile.role === "manager" || profile.role === "admin";
-  const isAdmin = profile.role === "admin";
-  const today = new Date().toISOString().slice(0, 10);
+  const { dict, locale } = await getServerDictionary();
+  // Low-stock is a catalog/stock concern; the month-to-date sales figure is
+  // reporting. Gate each on its matching permission instead of role.
+  const permissions = await getEffectivePermissions();
+  const canManage = hasPermission(permissions, "manage_products");
+  const isAdmin = hasPermission(permissions, "view_monthly_report");
+  const today = todayInShopTimezone();
 
   const { data: todayInvoices } = await supabase
     .from("invoices")
@@ -93,6 +100,15 @@ export default async function DashboardPage() {
   let lowStockItems: { id: string; name: string; quantity: number }[] = [];
 
   if (canManage) {
+    // Start from ALL products, not just those with inventory rows — a
+    // never-stocked product has no inventory row at all, so aggregating from
+    // `inventory` alone would silently miss it. Treat any product absent from
+    // the aggregation as quantity 0, which correctly flags it as low stock.
+    const { data: allProducts } = await supabase
+      .from("products")
+      .select("id, name_en, name_ar")
+      .eq("organization_id", profile.organization_id);
+
     const { data: inventoryRows } = await supabase
       .from("inventory")
       .select("product_id, quantity")
@@ -106,32 +122,20 @@ export default async function DashboardPage() {
       );
     }
 
-    const lowStockProductIds = [...totalByProduct.entries()]
-      .filter(([, quantity]) => quantity < LOW_STOCK_THRESHOLD)
-      .map(([productId]) => productId);
-
-    const { data: lowStockProducts } = lowStockProductIds.length
-      ? await supabase.from("products").select("id, name_en, name_ar").in("id", lowStockProductIds)
-      : { data: [] };
-
-    lowStockItems = lowStockProductIds
-      .map((id) => {
-        const product = (lowStockProducts ?? []).find((item) => item.id === id);
-        return {
-          id,
-          name: product?.name_en || product?.name_ar || id,
-          quantity: totalByProduct.get(id) ?? 0,
-        };
-      })
+    lowStockItems = (allProducts ?? [])
+      .map((product) => ({
+        id: product.id,
+        name: displayName(product.name_en, product.name_ar, locale) || product.id,
+        quantity: totalByProduct.get(product.id) ?? 0,
+      }))
+      .filter((item) => item.quantity < LOW_STOCK_THRESHOLD)
       .sort((a, b) => a.quantity - b.quantity);
   }
 
   let monthSalesTotal: number | null = null;
 
   if (isAdmin) {
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    const monthStartStr = monthStart.toISOString().slice(0, 10);
+    const monthStartStr = monthStartInShopTimezone();
 
     const { data: monthInvoices } = await supabase
       .from("invoices")

@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { AdminForm } from "./admin-form";
 import { UserList } from "./user-list";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
+import { getEffectivePermissions } from "@/lib/permissions.server";
+import { hasPermission } from "@/lib/permissions";
 import { cardClass, mutedTextClass, pageTitleClass, sectionTitleClass } from "@/lib/ui";
 
 type AdminUserRow = {
@@ -20,15 +22,17 @@ export default async function AdminPage() {
   const { data: profile } = authData.user
     ? await supabase
         .from("profiles")
-        .select("role, organization_id")
+        .select("organization_id")
         .eq("id", authData.user.id)
         .single()
     : { data: null };
 
+  const permissions = await getEffectivePermissions();
+
   // /dashboard/admin is nested under the dashboard layout, but the nav link
-  // being hidden for non-admins doesn't stop someone navigating here
-  // directly by URL. Enforce it here too, server-side.
-  if (!authData.user || !profile || profile.role !== "admin") {
+  // being hidden doesn't stop someone navigating here directly by URL. Enforce
+  // manage_users here too, server-side (RLS is the real backstop).
+  if (!authData.user || !profile || !hasPermission(permissions, "manage_users")) {
     return (
       <main className="mx-auto max-w-md px-8 py-6">
         <p className={mutedTextClass}>{dict["admin.notAuthorized"]}</p>
