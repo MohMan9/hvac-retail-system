@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { parseProductImageStoragePath } from "@/lib/product-images";
+import { Badge } from "@/components/ui/badge";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
 import { hasPermission } from "@/lib/permissions";
@@ -59,7 +60,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
   const { data: product } = await supabase
     .from("products")
     .select(
-      "id, name_ar, name_en, description_ar, description_en, barcode, unit_of_measure, warranty_months"
+      "id, name_ar, name_en, description_ar, description_en, barcode, serial_suffix_length, unit_of_measure, warranty_months"
     )
     .eq("id", id)
     .eq("organization_id", profile.organization_id)
@@ -95,7 +96,14 @@ export default async function ProductDetailPage({ params }: PageProps) {
   return (
     <main className="mx-auto max-w-5xl px-8 py-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className={pageTitleClass}>{productName}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className={pageTitleClass}>{productName}</h1>
+          {product.serial_suffix_length > 0 && (
+            <Badge tone="slate">
+              {dict["products.serialized"]} ±{product.serial_suffix_length}
+            </Badge>
+          )}
+        </div>
         <div className="flex items-center gap-4">
           {canManageProducts && (
             <Link href={`/dashboard/products/${product.id}/edit`} className={linkClass}>

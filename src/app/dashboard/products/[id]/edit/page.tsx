@@ -53,7 +53,7 @@ export default async function EditProductPage({ params }: PageProps) {
   const { data: product } = await supabase
     .from("products")
     .select(
-      "id, name_ar, name_en, description_ar, description_en, barcode, unit_of_measure, warranty_months"
+      "id, name_ar, name_en, description_ar, description_en, barcode, serial_suffix_length, unit_of_measure, warranty_months"
     )
     .eq("id", id)
     .eq("organization_id", profile.organization_id)
@@ -136,6 +136,7 @@ export default async function EditProductPage({ params }: PageProps) {
           description_ar: product.description_ar,
           description_en: product.description_en,
           barcode: product.barcode,
+          serial_suffix_length: product.serial_suffix_length,
           unit_of_measure: product.unit_of_measure,
           warranty_months: product.warranty_months,
           price_wholesale: price?.price_wholesale ?? null,

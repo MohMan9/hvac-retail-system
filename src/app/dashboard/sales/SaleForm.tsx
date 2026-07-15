@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Banknote, Barcode, CheckCircle2, CreditCard, Plus, X } from "lucide-react";
 import { saveDraftInvoice } from "./actions";
 import { createCustomer } from "../customers/new/actions";
+import { createClient } from "@/lib/supabase/client";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { Badge } from "@/components/ui/badge";
 import { QuantityStepper } from "@/components/ui/quantity-stepper";
@@ -301,15 +302,26 @@ export function SaleForm({
     });
   }
 
-  function handleBarcodeEnter() {
+  async function handleBarcodeEnter() {
     const code = barcode.trim();
     if (!code) {
       return;
     }
 
-    const product = products.find((item) => item.barcode === code);
+    // Resolve via the find_product_by_barcode RPC (not a direct barcode
+    // equality check) so serialized products match by prefix and normal
+    // products match exactly. It returns the product id; hydrate the full
+    // product from the already-loaded list.
+    const supabase = createClient();
+    const { data: productId, error } = await supabase.rpc("find_product_by_barcode", {
+      p_scanned_code: code,
+    });
 
-    if (!product) {
+    const product = productId
+      ? products.find((item) => item.id === productId)
+      : undefined;
+
+    if (error || !product) {
       setBarcodeMessage(`${t("sales.barcodeNotFound")} (${code})`);
       setBarcode("");
       return;

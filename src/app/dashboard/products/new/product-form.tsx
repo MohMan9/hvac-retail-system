@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createProduct } from "./actions";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
+import { truncateBarcode } from "@/lib/barcode";
 import { btnPrimary, inputClass, labelClass } from "@/lib/ui";
 
 type Warehouse = { id: string; name_en: string | null };
@@ -24,6 +25,14 @@ export function ProductForm({
   const { t } = useLocale();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Tracked for the serialized-barcode live preview. The raw serial-suffix
+  // string is kept as typed (no reformatting) and only parsed for display.
+  const [barcode, setBarcode] = useState("");
+  const [serialSuffix, setSerialSuffix] = useState("0");
+
+  const serialSuffixLength = Math.max(0, Math.trunc(Number(serialSuffix) || 0));
+  const barcodePreview =
+    serialSuffixLength > 0 ? truncateBarcode(barcode, serialSuffixLength) : null;
 
   async function handleSubmit(formData: FormData) {
     setIsSubmitting(true);
@@ -62,7 +71,34 @@ export function ProductForm({
 
       <div>
         <label className={labelClass}>{t("productForm.barcode")}</label>
-        <input name="barcode" type="text" required dir="ltr" className={inputClass} />
+        <input
+          name="barcode"
+          type="text"
+          required
+          dir="ltr"
+          value={barcode}
+          onChange={(event) => setBarcode(event.target.value)}
+          className={inputClass}
+        />
+        {barcodePreview !== null && (
+          <p className="mt-1 text-xs text-slate-500" dir="ltr">
+            {t("productForm.serialPreview")} {barcodePreview}
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label className={labelClass}>{t("productForm.serialSuffixLength")}</label>
+        <input
+          name="serial_suffix_length"
+          type="number"
+          min={0}
+          dir="ltr"
+          value={serialSuffix}
+          onChange={(event) => setSerialSuffix(event.target.value)}
+          className={inputClass}
+        />
+        <p className="mt-1 text-xs text-slate-500">{t("productForm.serialSuffixHelp")}</p>
       </div>
 
       <div>

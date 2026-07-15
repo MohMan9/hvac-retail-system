@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { checkPermission } from "@/lib/permissions.server";
+import { parseSerialSuffixLength, truncateBarcode } from "@/lib/barcode";
 import {
   buildProductImageStoragePath,
   cleanProductImageFilename,
@@ -44,10 +45,15 @@ export async function updateProduct(
   const name_en = (formData.get("name_en") as string) || null;
   const description_ar = (formData.get("description_ar") as string) || null;
   const description_en = (formData.get("description_en") as string) || null;
-  const barcode = formData.get("barcode") as string;
   const unit_of_measure = formData.get("unit_of_measure") as string;
   const warrantyRaw = formData.get("warranty_months") as string;
   const warranty_months = warrantyRaw ? Number(warrantyRaw) : null;
+
+  // For serialized products the stored barcode is the shared prefix — strip the
+  // per-unit suffix (re-scanning a new full code while serial length > 0
+  // truncates the same way).
+  const serial_suffix_length = parseSerialSuffixLength(formData.get("serial_suffix_length"));
+  const barcode = truncateBarcode(formData.get("barcode") as string, serial_suffix_length);
 
   // 1) Update the product itself.
   const { error: productError } = await supabase
@@ -58,6 +64,7 @@ export async function updateProduct(
       description_ar,
       description_en,
       barcode,
+      serial_suffix_length,
       unit_of_measure,
       warranty_months,
     })

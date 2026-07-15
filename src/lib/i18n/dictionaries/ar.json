@@ -123,6 +123,7 @@
   "unit.meter": "متر",
 
   "products.title": "المنتجات",
+  "products.serialized": "متسلسل",
   "products.newButton": "منتج جديد",
   "products.searchPlaceholder": "ابحث بالاسم أو الباركود",
   "products.colName": "الاسم",
@@ -155,6 +156,9 @@
   "productForm.descriptionAr": "الوصف (عربي)",
   "productForm.descriptionEn": "الوصف (إنجليزي)",
   "productForm.barcode": "الباركود",
+  "productForm.serialSuffixLength": "طول لاحقة الرقم التسلسلي",
+  "productForm.serialSuffixHelp": "كم عدد الأحرف في نهاية الباركود التي تختلف لكل وحدة؟ اترك 0 للباركود الثابت العادي.",
+  "productForm.serialPreview": "سيتم حفظه كـ:",
   "productForm.unit": "وحدة القياس",
   "productForm.warranty": "الضمان (بالأشهر)",
   "productForm.pricingLegend": "الأسعار",

@@ -5,6 +5,7 @@ import { Package, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { parseProductImageStoragePath } from "@/lib/product-images";
 import { Pagination } from "@/components/pagination";
+import { Badge } from "@/components/ui/badge";
 import { PAGE_SIZE, pageRange, parsePage, sanitizeSearchTerm } from "@/lib/pagination";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
@@ -68,7 +69,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
   let productsQuery = supabase
     .from("products")
-    .select("id, barcode, name_ar, name_en, unit_of_measure", { count: "exact" })
+    .select("id, barcode, name_ar, name_en, serial_suffix_length, unit_of_measure", { count: "exact" })
     .order("name_en")
     .range(from, to);
 
@@ -216,6 +217,11 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                           </span>
                         )}
                         <span>{productName}</span>
+                        {product.serial_suffix_length > 0 && (
+                          <Badge tone="slate">
+                            {dict["products.serialized"]} ±{product.serial_suffix_length}
+                          </Badge>
+                        )}
                       </Link>
                     </td>
                     <td className={tdClass} dir="ltr">

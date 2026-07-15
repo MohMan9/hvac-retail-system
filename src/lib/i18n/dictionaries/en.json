@@ -123,6 +123,7 @@
   "unit.meter": "Meter",
 
   "products.title": "Products",
+  "products.serialized": "Serialized",
   "products.newButton": "New Product",
   "products.searchPlaceholder": "Search by name or barcode",
   "products.colName": "Name",
@@ -155,6 +156,9 @@
   "productForm.descriptionAr": "Description (Arabic)",
   "productForm.descriptionEn": "Description (English)",
   "productForm.barcode": "Barcode",
+  "productForm.serialSuffixLength": "Serial suffix length",
+  "productForm.serialSuffixHelp": "How many characters at the end of the barcode differ per physical unit? Leave 0 for a normal fixed barcode.",
+  "productForm.serialPreview": "Will be saved as:",
   "productForm.unit": "Unit of Measure",
   "productForm.warranty": "Warranty (months)",
   "productForm.pricingLegend": "Pricing",

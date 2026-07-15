@@ -7,6 +7,7 @@ import {
   PRODUCT_IMAGE_BUCKETS,
 } from "@/lib/product-images";
 import { todayInShopTimezone } from "@/lib/date";
+import { parseSerialSuffixLength, truncateBarcode } from "@/lib/barcode";
 import { checkPermission } from "@/lib/permissions.server";
 import { redirect } from "next/navigation";
 
@@ -38,10 +39,15 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
   const name_en = (formData.get("name_en") as string) || null;
   const description_ar = (formData.get("description_ar") as string) || null;
   const description_en = (formData.get("description_en") as string) || null;
-  const barcode = formData.get("barcode") as string;
   const unit_of_measure = formData.get("unit_of_measure") as string;
   const warrantyRaw = formData.get("warranty_months") as string;
   const warranty_months = warrantyRaw ? Number(warrantyRaw) : null;
+
+  // For serialized products the stored barcode is the shared prefix — strip the
+  // per-unit suffix here so the value saved matches what find_product_by_barcode
+  // prefix-matches against.
+  const serial_suffix_length = parseSerialSuffixLength(formData.get("serial_suffix_length"));
+  const barcode = truncateBarcode(formData.get("barcode") as string, serial_suffix_length);
 
   // 1) Create the product itself.
   const { data: newProduct, error: productError } = await supabase
@@ -53,6 +59,7 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
       description_ar,
       description_en,
       barcode,
+      serial_suffix_length,
       unit_of_measure,
       warranty_months,
     })
