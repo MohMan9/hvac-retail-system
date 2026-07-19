@@ -19,6 +19,15 @@ const nextConfig: NextConfig = {
         ]
       : [],
   },
+  // The invoice PDF route loads its fonts from public/fonts/*.ttf via a
+  // runtime-constructed path (`${process.cwd()}/public/fonts/...`), which
+  // Next's build-time file tracer (@vercel/nft) cannot statically follow —
+  // so on Vercel the .ttf files were silently left out of the deployed
+  // function, and @react-pdf/font's fontkit.open() threw ENOENT at runtime.
+  // Force-include them explicitly for that route.
+  outputFileTracingIncludes: {
+    "/api/invoices/\\[id\\]/pdf": ["./public/fonts/**/*"],
+  },
 };
 
 export default nextConfig;
