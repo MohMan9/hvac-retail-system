@@ -1,13 +1,14 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import { LanguageSwitcher } from "@/lib/i18n/LanguageSwitcher";
 import { RoleBadge } from "@/components/ui/badge";
 import { getPageTitleKey } from "@/lib/nav-title";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 import { signOut } from "@/app/signin/actions";
 import { NotificationsBell } from "./notifications-bell";
+import { useMobileSidebar } from "./mobile-sidebar-context";
 import { btnSecondarySm } from "@/lib/ui";
 
 export function Topbar({
@@ -23,10 +24,21 @@ export function Topbar({
 }) {
   const pathname = usePathname();
   const titleKey = getPageTitleKey(pathname);
+  const { toggle } = useMobileSidebar();
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-8">
-      <h1 className="text-lg font-semibold text-slate-900">{dict[titleKey]}</h1>
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 lg:px-8">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label="Open menu"
+          className="-ms-1 rounded-md p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <h1 className="text-lg font-semibold text-slate-900">{dict[titleKey]}</h1>
+      </div>
 
       <div className="flex items-center gap-4">
         <LanguageSwitcher />

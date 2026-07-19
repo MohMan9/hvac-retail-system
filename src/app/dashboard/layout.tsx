@@ -5,6 +5,7 @@ import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
+import { MobileSidebarProvider } from "./mobile-sidebar-context";
 
 export default async function DashboardLayout({
   children,
@@ -49,17 +50,21 @@ export default async function DashboardLayout({
     .eq("is_read", false);
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <Sidebar dict={dict} permissions={permissions} />
-      <div className="flex min-h-screen flex-1 flex-col ms-60">
-        <Topbar
-          dict={dict}
-          role={profile.role}
-          fullName={profile.full_name}
-          initialUnreadCount={unreadCount ?? 0}
-        />
-        <div className="flex-1 overflow-y-auto">{children}</div>
+    <MobileSidebarProvider>
+      <div className="flex min-h-screen bg-slate-50">
+        <Sidebar dict={dict} permissions={permissions} />
+        {/* The sidebar is a fixed-position overlay below lg:, so content only
+            needs the ms-60 offset once it's docked in the layout at lg:+. */}
+        <div className="flex min-h-screen flex-1 flex-col lg:ms-60">
+          <Topbar
+            dict={dict}
+            role={profile.role}
+            fullName={profile.full_name}
+            initialUnreadCount={unreadCount ?? 0}
+          />
+          <div className="flex-1 overflow-y-auto">{children}</div>
+        </div>
       </div>
-    </div>
+    </MobileSidebarProvider>
   );
 }
