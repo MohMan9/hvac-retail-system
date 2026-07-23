@@ -33,9 +33,33 @@ export async function createExpense(formData: FormData): Promise<CreateExpenseRe
     return { success: false, error: "No profile found for this account" };
   }
 
+  const category = ((formData.get("category") as string) ?? "").trim();
+
+  if (!category) {
+    return { success: false, error: "Choose or enter a category." };
+  }
+
+  // Persist a brand-new category name to expense_categories so it appears in the
+  // dropdown next time. This is a UI convenience list (the expenses.category
+  // column has no FK), so a failure here must not block the expense itself — we
+  // insert only when the name is new and ignore any error (e.g. a concurrent add
+  // hitting a unique constraint).
+  const { data: existingCategory } = await supabase
+    .from("expense_categories")
+    .select("id")
+    .eq("organization_id", profile.organization_id)
+    .eq("name", category)
+    .maybeSingle();
+
+  if (!existingCategory) {
+    await supabase
+      .from("expense_categories")
+      .insert({ organization_id: profile.organization_id, name: category });
+  }
+
   const { error } = await supabase.from("expenses").insert({
     organization_id: profile.organization_id,
-    category: formData.get("category") as string,
+    category,
     amount: roundMoney(formData.get("amount")),
     expense_date: formData.get("expense_date") as string,
     note: (formData.get("note") as string) || null,

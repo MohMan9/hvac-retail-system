@@ -39,7 +39,12 @@ export default function NewCustomerPage() {
 
         <div>
           <label className={labelClass}>{t("customers.phone")}</label>
-          <input name="phone" type="text" dir="ltr" className={inputClass} />
+          <input name="phone" type="text" dir="ltr" required className={inputClass} />
+        </div>
+
+        <div>
+          <label className={labelClass}>{t("customers.address")}</label>
+          <input name="address" type="text" required className={inputClass} />
         </div>
 
         <div>

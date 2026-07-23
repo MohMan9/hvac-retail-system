@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth.server";
 import { createClient } from "@/lib/supabase/server";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
@@ -13,17 +14,38 @@ export default async function DashboardLayout({
   children: ReactNode;
 }) {
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
 
   if (!authData.user) {
     redirect("/signin");
   }
 
-  const { data: profile } = await supabase
+  const profilePromise = supabase
     .from("profiles")
     .select("role, full_name, is_active")
     .eq("id", authData.user.id)
     .single();
+
+  // These requests are independent once the authenticated user ID is known.
+  const permissionsPromise = getEffectivePermissions();
+  const unreadCountPromise = supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("recipient_id", authData.user.id)
+    .eq("is_read", false);
+  const dictionaryPromise = getServerDictionary();
+
+  const [
+    { data: profile },
+    permissions,
+    { count: unreadCount },
+    { dict },
+  ] = await Promise.all([
+    profilePromise,
+    permissionsPromise,
+    unreadCountPromise,
+    dictionaryPromise,
+  ]);
 
   if (!profile) {
     redirect("/signin");
@@ -37,18 +59,8 @@ export default async function DashboardLayout({
     redirect("/signin?deactivated=1");
   }
 
-  const { dict } = await getServerDictionary();
-
   // One query for the whole nav — the sidebar decides item visibility from
   // this permission map (RLS independently enforces the same rules).
-  const permissions = await getEffectivePermissions();
-
-  const { count: unreadCount } = await supabase
-    .from("notifications")
-    .select("id", { count: "exact", head: true })
-    .eq("recipient_id", authData.user.id)
-    .eq("is_read", false);
-
   return (
     <MobileSidebarProvider>
       <div className="flex min-h-screen bg-slate-50">

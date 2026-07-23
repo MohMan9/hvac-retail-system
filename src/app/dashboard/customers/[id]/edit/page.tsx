@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth.server";
 import { CustomerEditForm } from "./customer-edit-form";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { pageTitleClass } from "@/lib/ui";
@@ -11,7 +12,7 @@ type PageProps = {
 export default async function EditCustomerPage({ params }: PageProps) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
   const { dict } = await getServerDictionary();
 
   if (!authData.user) {
@@ -30,7 +31,7 @@ export default async function EditCustomerPage({ params }: PageProps) {
 
   const { data: customer } = await supabase
     .from("customers")
-    .select("id, name, phone, customer_type")
+    .select("id, name, phone, address, customer_type")
     .eq("id", id)
     .eq("organization_id", profile.organization_id)
     .single();
@@ -47,6 +48,7 @@ export default async function EditCustomerPage({ params }: PageProps) {
         initialValues={{
           name: customer.name,
           phone: customer.phone,
+          address: customer.address,
           customer_type: customer.customer_type,
         }}
       />

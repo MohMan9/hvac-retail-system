@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Banknote, CreditCard } from "lucide-react";
+import { Banknote, CreditCard, ScrollText } from "lucide-react";
 import { closeRegister, openRegister } from "./actions";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { formatShopDateTime } from "@/lib/date";
@@ -27,6 +27,7 @@ type HistoryRow = {
   actual_cash_counted: number;
   cash_difference: number;
   visa_total: number;
+  cheque_total: number;
 };
 
 type CloseResultData = {
@@ -34,6 +35,7 @@ type CloseResultData = {
   actual_cash_counted: number;
   cash_difference: number;
   visa_total: number;
+  cheque_total: number;
 };
 
 function formatMoney(value: number) {
@@ -162,6 +164,7 @@ export function RegisterClient({
                     <th className={thClass}>{t("finance.register.colActualCash")}</th>
                     <th className={thClass}>{t("finance.register.colDifference")}</th>
                     <th className={thClass}>{t("finance.register.colVisaTotal")}</th>
+                    <th className={thClass}>{t("finance.register.colChequeTotal")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -184,6 +187,9 @@ export function RegisterClient({
                       </td>
                       <td className={tdClass} dir="ltr">
                         {formatMoney(session.visa_total)}
+                      </td>
+                      <td className={tdClass} dir="ltr">
+                        {formatMoney(session.cheque_total)}
                       </td>
                     </tr>
                   ))}
@@ -334,13 +340,22 @@ function CloseResultModal({
               <DifferenceValue value={result.cash_difference} />
             </span>
           </div>
-          <div className="flex justify-between py-2">
+          <div className="flex justify-between border-b border-slate-100 py-2">
             <span className="flex items-center gap-1.5 text-slate-500">
               <CreditCard className="h-3.5 w-3.5" />
               {t("finance.register.colVisaTotal")}
             </span>
             <span className="font-medium text-slate-900" dir="ltr">
               {formatMoney(result.visa_total)}
+            </span>
+          </div>
+          <div className="flex justify-between py-2">
+            <span className="flex items-center gap-1.5 text-slate-500">
+              <ScrollText className="h-3.5 w-3.5" />
+              {t("finance.register.colChequeTotal")}
+            </span>
+            <span className="font-medium text-slate-900" dir="ltr">
+              {formatMoney(result.cheque_total)}
             </span>
           </div>
         </div>

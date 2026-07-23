@@ -3,10 +3,12 @@ import { Handshake } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
+import { getCurrentUser } from "@/lib/auth.server";
 import { hasPermission } from "@/lib/permissions";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   btnPrimary,
+  linkClass,
   mutedTextClass,
   pageTitleClass,
   tableWrapClass,
@@ -22,7 +24,7 @@ function formatPercent(value: number | string | null) {
 
 export default async function PartnersPage() {
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
   const { dict } = await getServerDictionary();
 
   const permissions = await getEffectivePermissions();
@@ -67,6 +69,7 @@ export default async function PartnersPage() {
               <tr className={theadRowClass}>
                 <th className={thClass}>{dict["finance.partners.colName"]}</th>
                 <th className={thClass}>{dict["finance.partners.colSharePercent"]}</th>
+                <th className={thClass}>{dict["finance.partners.colActions"]}</th>
               </tr>
             </thead>
             <tbody>
@@ -75,6 +78,14 @@ export default async function PartnersPage() {
                   <td className={tdClass}>{partner.name}</td>
                   <td className={tdClass} dir="ltr">
                     {formatPercent(partner.share_percent)}%
+                  </td>
+                  <td className={tdClass}>
+                    <Link
+                      href={`/dashboard/finance/partners/${partner.id}/withdrawals`}
+                      className={linkClass}
+                    >
+                      {dict["finance.partners.withdrawalsLink"]}
+                    </Link>
                   </td>
                 </tr>
               ))}

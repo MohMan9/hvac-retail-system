@@ -211,12 +211,22 @@ export async function completeInvoice(invoiceId: string): Promise<CompleteInvoic
     return { success: false, error: "This invoice has already been completed." };
   }
 
-  // If this was a cash sale but no register session is open, the amount won't
-  // be captured by any register closing. Don't block the sale — just flag it
+  // If this sale includes ANY cash portion but no register session is open,
+  // that cash won't be captured by any register closing. Check invoice_payments
+  // (not just the primary payment_method) so a split sale whose largest method
+  // isn't cash still triggers the warning. Don't block the sale — just flag it
   // so the UI can warn instead of the gap being silent.
   let cashRegisterClosed = false;
 
-  if (updated[0].payment_method === "cash") {
+  const { data: cashPayment } = await supabase
+    .from("invoice_payments")
+    .select("id")
+    .eq("invoice_id", invoiceId)
+    .eq("payment_method", "cash")
+    .limit(1)
+    .maybeSingle();
+
+  if (cashPayment) {
     const { data: openSession } = await supabase
       .from("cash_sessions")
       .select("id")

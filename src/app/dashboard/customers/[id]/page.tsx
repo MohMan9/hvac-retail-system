@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth.server";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { StatusBadge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -36,7 +37,7 @@ const customerTypeKeys: Record<string, "customerType.wholesale" | "customerType.
 export default async function CustomerDetailPage({ params }: PageProps) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
   const { dict } = await getServerDictionary();
 
   if (!authData.user) {

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { monthStartInShopTimezone, todayInShopTimezone } from "@/lib/date";
 import { getEffectivePermissions } from "@/lib/permissions.server";
+import { getCurrentUser } from "@/lib/auth.server";
 import { hasPermission } from "@/lib/permissions";
 import { displayName } from "@/lib/display-name";
 import { cardClass, pageTitleClass, sectionTitleClass } from "@/lib/ui";
@@ -50,7 +51,7 @@ function StatCard({
 
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
 
   if (!authData.user) {
     redirect("/signin");

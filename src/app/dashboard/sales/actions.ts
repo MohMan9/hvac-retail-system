@@ -7,7 +7,14 @@ import { displayName } from "@/lib/display-name";
 import { notifyDiscountRequested } from "@/lib/notifications";
 
 type CustomerTier = "wholesale" | "craftsman" | "shop" | "retail";
-type PaymentMethod = "cash" | "visa";
+type PaymentMethod = "cash" | "visa" | "cheque";
+
+type PaymentInput = {
+  method: PaymentMethod;
+  amount: number;
+  cheque_number: string | null;
+  cheque_date: string | null;
+};
 
 type CartItemInput = {
   product_id: string;
@@ -26,14 +33,22 @@ type ServiceInput = {
 };
 
 type SaveDraftInput = {
-  customer_id: string | null;
+  customer_id: string;
   applied_tier: CustomerTier;
-  payment_method: PaymentMethod;
+  payments: PaymentInput[];
   sale_date: string;
   note: string | null;
   items: CartItemInput[];
   services: ServiceInput[];
 };
+
+// A sale can be settled across several methods at once (e.g. part cash, part
+// visa, part cheque). The method carrying the largest amount is stored on
+// invoices.payment_method as the "primary" method for quick list-view display;
+// the full breakdown lives in invoice_payments.
+function primaryPaymentMethod(payments: PaymentInput[]): PaymentMethod {
+  return payments.reduce((best, payment) => (payment.amount > best.amount ? payment : best)).method;
+}
 
 type ActionResult = { success: false; error: string };
 
@@ -57,6 +72,12 @@ export async function saveDraftInvoice(input: SaveDraftInput): Promise<ActionRes
 
   if (!profile) {
     return { success: false, error: "No profile found for this account" };
+  }
+
+  // Every sale must be tied to a registered customer (invoices.customer_id is
+  // NOT NULL). Walk-in sales are no longer allowed.
+  if (!input.customer_id) {
+    return { success: false, error: "A customer is required for every sale." };
   }
 
   if (input.items.length === 0 && input.services.length === 0) {
@@ -107,13 +128,42 @@ export async function saveDraftInvoice(input: SaveDraftInput): Promise<ActionRes
   const vatAmount = money(taxableSubtotal * (Number(organization?.vat_rate ?? 0) / 100));
   const total = money(taxableSubtotal + vatAmount);
 
+  // Validate the payment breakdown. This mirrors the UI's live check and the DB
+  // completion trigger: every line needs a positive amount, cheque lines need
+  // their number/date, and the lines must sum to the invoice total (with the
+  // same 0.01 rounding tolerance the trigger uses).
+  if (input.payments.length === 0) {
+    return { success: false, error: "Add at least one payment method." };
+  }
+
+  const invalidPayment = input.payments.find((payment) => !(payment.amount > 0));
+
+  if (invalidPayment) {
+    return { success: false, error: "Every payment line needs a positive amount." };
+  }
+
+  const invalidCheque = input.payments.find(
+    (payment) =>
+      payment.method === "cheque" && (!payment.cheque_number?.trim() || !payment.cheque_date)
+  );
+
+  if (invalidCheque) {
+    return { success: false, error: "Enter a cheque number and date for every cheque payment." };
+  }
+
+  const paymentsTotal = money(input.payments.reduce((sum, payment) => sum + payment.amount, 0));
+
+  if (Math.abs(paymentsTotal - total) > 0.01) {
+    return { success: false, error: "Payments must add up to the invoice total." };
+  }
+
   const { data: invoice, error: invoiceError } = await supabase
     .from("invoices")
     .insert({
       organization_id: profile.organization_id,
       customer_id: input.customer_id,
       applied_tier: input.applied_tier,
-      payment_method: input.payment_method,
+      payment_method: primaryPaymentMethod(input.payments),
       salesperson_id: authData.user.id,
       sale_date: input.sale_date,
       subtotal,
@@ -128,6 +178,25 @@ export async function saveDraftInvoice(input: SaveDraftInput): Promise<ActionRes
 
   if (invoiceError || !invoice) {
     return { success: false, error: invoiceError?.message ?? "Failed to create invoice" };
+  }
+
+  // Persist the full payment breakdown — one invoice_payments row per line.
+  // The DB completion trigger later checks these sum to the invoice total.
+  const { error: paymentsError } = await supabase.from("invoice_payments").insert(
+    input.payments.map((payment) => ({
+      invoice_id: invoice.id,
+      payment_method: payment.method,
+      amount: money(payment.amount),
+      cheque_number: payment.method === "cheque" ? payment.cheque_number?.trim() || null : null,
+      cheque_date: payment.method === "cheque" ? payment.cheque_date : null,
+    }))
+  );
+
+  if (paymentsError) {
+    return {
+      success: false,
+      error: `Invoice was created, but payment details failed to save (${paymentsError.message}).`,
+    };
   }
 
   if (input.items.length > 0) {

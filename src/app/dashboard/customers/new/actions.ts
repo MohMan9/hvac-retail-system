@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 type CreatedCustomer = {
   id: string;
   name: string;
-  phone: string | null;
+  phone: string;
+  address: string;
   customer_type: string;
 };
 
@@ -31,9 +32,16 @@ export async function createCustomer(formData: FormData): Promise<CreateCustomer
     return { success: false, error: "No profile found for this account" };
   }
 
-  const name = formData.get("name") as string;
-  const phone = (formData.get("phone") as string) || null;
+  const name = ((formData.get("name") as string) ?? "").trim();
+  const phone = ((formData.get("phone") as string) ?? "").trim();
+  const address = ((formData.get("address") as string) ?? "").trim();
   const customer_type = formData.get("customer_type") as string;
+
+  // Name, phone, and address are all mandatory now (the customers table
+  // enforces NOT NULL on phone and address).
+  if (!name || !phone || !address) {
+    return { success: false, error: "Name, phone, and address are all required." };
+  }
 
   const { data: customer, error } = await supabase
     .from("customers")
@@ -41,9 +49,10 @@ export async function createCustomer(formData: FormData): Promise<CreateCustomer
       organization_id: profile.organization_id,
       name,
       phone,
+      address,
       customer_type,
     })
-    .select("id, name, phone, customer_type")
+    .select("id, name, phone, address, customer_type")
     .single();
 
   if (error || !customer) {

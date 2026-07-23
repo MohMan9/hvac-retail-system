@@ -7,15 +7,12 @@ import type { Dictionary } from "@/lib/i18n/dictionaries";
 import { todayInShopTimezone } from "@/lib/date";
 import { btnPrimary, inputClass, labelClass } from "@/lib/ui";
 
-const categories = [
-  "electricity",
-  "water",
-  "labor",
-  "fixed_setup",
-  "misc",
-] as const;
+// Sentinel select value that reveals the free-text "new category" input.
+const ADD_NEW_CATEGORY = "__add_new__";
 
-const categoryKeys: Record<(typeof categories)[number], keyof Dictionary> = {
+// The 5 originally-seeded categories have translated labels; any custom
+// category added by a user is shown verbatim (it's already a display name).
+const seededCategoryKeys: Record<string, keyof Dictionary> = {
   electricity: "finance.expenses.categoryElectricity",
   water: "finance.expenses.categoryWater",
   labor: "finance.expenses.categoryLabor",
@@ -23,14 +20,38 @@ const categoryKeys: Record<(typeof categories)[number], keyof Dictionary> = {
   misc: "finance.expenses.categoryMisc",
 };
 
-export function ExpenseForm() {
+export function ExpenseForm({ categories }: { categories: string[] }) {
   const { t } = useLocale();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Selected category value, or the ADD_NEW_CATEGORY sentinel. Defaults to the
+  // first existing category so a normal save needs no extra interaction.
+  const [selectedCategory, setSelectedCategory] = useState(categories[0] ?? ADD_NEW_CATEGORY);
+  const [newCategory, setNewCategory] = useState("");
   const today = todayInShopTimezone();
+
+  const isAddingNew = selectedCategory === ADD_NEW_CATEGORY;
+
+  function categoryLabel(category: string) {
+    const key = seededCategoryKeys[category];
+    return key ? t(key) : category;
+  }
 
   async function handleSubmit(formData: FormData) {
     setError(null);
+
+    // Resolve the final category string: either the picked existing one or the
+    // typed new name. The server action inserts a brand-new name into
+    // expense_categories before saving the expense.
+    const category = isAddingNew ? newCategory.trim() : selectedCategory;
+
+    if (!category) {
+      setError(t("finance.expenses.newCategoryRequired"));
+      return;
+    }
+
+    formData.set("category", category);
+
     setIsSubmitting(true);
     const result = await createExpense(formData);
 
@@ -44,14 +65,32 @@ export function ExpenseForm() {
     <form action={handleSubmit} className="flex flex-col gap-4">
       <div>
         <label className={labelClass}>{t("finance.expenses.category")}</label>
-        <select name="category" required className={inputClass}>
+        <select
+          value={selectedCategory}
+          onChange={(event) => setSelectedCategory(event.target.value)}
+          className={inputClass}
+        >
           {categories.map((category) => (
             <option key={category} value={category}>
-              {t(categoryKeys[category])}
+              {categoryLabel(category)}
             </option>
           ))}
+          <option value={ADD_NEW_CATEGORY}>{t("finance.expenses.addNewCategory")}</option>
         </select>
       </div>
+
+      {isAddingNew && (
+        <div>
+          <label className={labelClass}>{t("finance.expenses.newCategoryName")}</label>
+          <input
+            type="text"
+            value={newCategory}
+            onChange={(event) => setNewCategory(event.target.value)}
+            autoFocus
+            className={inputClass}
+          />
+        </div>
+      )}
 
       <div>
         <label className={labelClass}>{t("finance.expenses.amount")}</label>

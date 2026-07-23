@@ -5,7 +5,12 @@ import { updateCustomer } from "./actions";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { btnPrimary, inputClass, labelClass } from "@/lib/ui";
 
-type InitialValues = { name: string; phone: string | null; customer_type: string };
+type InitialValues = {
+  name: string;
+  phone: string | null;
+  address: string | null;
+  customer_type: string;
+};
 
 export function CustomerEditForm({
   customerId,
@@ -50,7 +55,19 @@ export function CustomerEditForm({
           name="phone"
           type="text"
           dir="ltr"
+          required
           defaultValue={initialValues.phone ?? ""}
+          className={inputClass}
+        />
+      </div>
+
+      <div>
+        <label className={labelClass}>{t("customers.address")}</label>
+        <input
+          name="address"
+          type="text"
+          required
+          defaultValue={initialValues.address ?? ""}
           className={inputClass}
         />
       </div>

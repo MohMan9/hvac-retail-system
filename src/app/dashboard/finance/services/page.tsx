@@ -3,6 +3,7 @@ import { Wrench } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
+import { getCurrentUser } from "@/lib/auth.server";
 import { hasPermission } from "@/lib/permissions";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -22,7 +23,7 @@ function formatMoney(value: number | string | null) {
 
 export default async function ServicesPage() {
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
   const { dict } = await getServerDictionary();
 
   const permissions = await getEffectivePermissions();

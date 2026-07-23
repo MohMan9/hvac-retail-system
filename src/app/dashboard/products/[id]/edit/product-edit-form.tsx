@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { updateProduct } from "./actions";
+import { PricingCostSection } from "../../pricing-cost-section";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { truncateBarcode } from "@/lib/barcode";
 import { btnPrimary, inputClass, labelClass } from "@/lib/ui";
@@ -23,9 +24,6 @@ type InitialValues = {
   shipping_cost: number | string | null;
   customs_cost: number | string | null;
 };
-
-const fieldsetClass = "rounded-lg border border-slate-200 p-4";
-const legendClass = "px-1 text-sm font-medium text-slate-700";
 
 // canViewCosts (the view_product_costs permission) is decided server-side
 // (page.tsx) and passed in as a prop, so the cost section is never even
@@ -164,114 +162,18 @@ export function ProductEditForm({
         />
       </div>
 
-      <fieldset className={fieldsetClass}>
-        <legend className={legendClass}>{t("productForm.pricingLegend")}</legend>
-
-        <div className="flex flex-col gap-4">
-          <div>
-            <label className={labelClass}>{t("productForm.wholesalePrice")}</label>
-            <input
-              name="price_wholesale"
-              type="number"
-              step="0.01"
-              min={0}
-              required
-              dir="ltr"
-              defaultValue={initialValues.price_wholesale ?? ""}
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <label className={labelClass}>{t("productForm.craftsmanPrice")}</label>
-            <input
-              name="price_craftsman"
-              type="number"
-              step="0.01"
-              min={0}
-              required
-              dir="ltr"
-              defaultValue={initialValues.price_craftsman ?? ""}
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <label className={labelClass}>{t("productForm.shopPrice")}</label>
-            <input
-              name="price_shop"
-              type="number"
-              step="0.01"
-              min={0}
-              required
-              dir="ltr"
-              defaultValue={initialValues.price_shop ?? ""}
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <label className={labelClass}>{t("productForm.retailPrice")}</label>
-            <input
-              name="price_retail"
-              type="number"
-              step="0.01"
-              min={0}
-              required
-              dir="ltr"
-              defaultValue={initialValues.price_retail ?? ""}
-              className={inputClass}
-            />
-          </div>
-        </div>
-      </fieldset>
-
-      {canViewCosts && (
-        <fieldset className={fieldsetClass}>
-          <legend className={legendClass}>{t("productForm.costLegend")}</legend>
-
-          <div className="flex flex-col gap-4">
-            <div>
-              <label className={labelClass}>{t("productForm.factoryPrice")}</label>
-              <input
-                name="factory_price"
-                type="number"
-                step="0.01"
-                min={0}
-                dir="ltr"
-                defaultValue={initialValues.factory_price ?? ""}
-                className={inputClass}
-              />
-            </div>
-
-            <div>
-              <label className={labelClass}>{t("productForm.shippingCost")}</label>
-              <input
-                name="shipping_cost"
-                type="number"
-                step="0.01"
-                min={0}
-                dir="ltr"
-                defaultValue={initialValues.shipping_cost ?? ""}
-                className={inputClass}
-              />
-            </div>
-
-            <div>
-              <label className={labelClass}>{t("productForm.customsCost")}</label>
-              <input
-                name="customs_cost"
-                type="number"
-                step="0.01"
-                min={0}
-                dir="ltr"
-                defaultValue={initialValues.customs_cost ?? ""}
-                className={inputClass}
-              />
-            </div>
-          </div>
-        </fieldset>
-      )}
+      <PricingCostSection
+        canViewCosts={canViewCosts}
+        initial={{
+          price_wholesale: initialValues.price_wholesale,
+          price_craftsman: initialValues.price_craftsman,
+          price_shop: initialValues.price_shop,
+          price_retail: initialValues.price_retail,
+          factory_price: initialValues.factory_price,
+          shipping_cost: initialValues.shipping_cost,
+          customs_cost: initialValues.customs_cost,
+        }}
+      />
 
       <button type="submit" disabled={isSubmitting} className={`${btnPrimary} mt-2`}>
         {isSubmitting ? t("common.saving") : t("productForm.saveButton")}

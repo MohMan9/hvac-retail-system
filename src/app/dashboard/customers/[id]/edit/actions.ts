@@ -26,13 +26,20 @@ export async function updateCustomer(
     return { success: false, error: "No profile found for this account" };
   }
 
-  const name = formData.get("name") as string;
-  const phone = (formData.get("phone") as string) || null;
+  const name = ((formData.get("name") as string) ?? "").trim();
+  const phone = ((formData.get("phone") as string) ?? "").trim();
+  const address = ((formData.get("address") as string) ?? "").trim();
   const customer_type = formData.get("customer_type") as string;
+
+  // Name, phone, and address are all mandatory now (the customers table
+  // enforces NOT NULL on phone and address).
+  if (!name || !phone || !address) {
+    return { success: false, error: "Name, phone, and address are all required." };
+  }
 
   const { error } = await supabase
     .from("customers")
-    .update({ name, phone, customer_type })
+    .update({ name, phone, address, customer_type })
     .eq("id", customerId)
     .eq("organization_id", profile.organization_id);
 

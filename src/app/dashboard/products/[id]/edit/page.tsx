@@ -5,6 +5,7 @@ import { ProductImagesManager } from "./product-images-manager";
 import { ProductStockSection } from "./product-stock-section";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
+import { getCurrentUser } from "@/lib/auth.server";
 import { hasPermission } from "@/lib/permissions";
 import { parseProductImageStoragePath } from "@/lib/product-images";
 import { displayName } from "@/lib/display-name";
@@ -18,7 +19,7 @@ type PageProps = {
 export default async function EditProductPage({ params }: PageProps) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
   const { dict, locale } = await getServerDictionary();
 
   if (!authData.user) {

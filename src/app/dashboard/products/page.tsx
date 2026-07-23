@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import { Package, Search } from "lucide-react";
+import { getCurrentUser } from "@/lib/auth.server";
 import { createClient } from "@/lib/supabase/server";
 import { parseProductImageStoragePath } from "@/lib/product-images";
 import { Pagination } from "@/components/pagination";
@@ -11,6 +12,7 @@ import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
 import { hasPermission } from "@/lib/permissions";
 import { displayName } from "@/lib/display-name";
+import { marginPercent } from "@/lib/margin";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   btnPrimary,
@@ -41,6 +43,32 @@ function pickProductImage(images: ProductImage[]) {
   return images.find((image) => image.is_primary) ?? images[0] ?? null;
 }
 
+// Small live-computed margin % shown under a price cell for view_product_costs
+// users. Returns nothing when there's no price or no usable landed cost.
+function MarginLine({
+  price,
+  landedCost,
+}: {
+  price: number | string | null | undefined;
+  landedCost: number | undefined;
+}) {
+  if (price === null || price === undefined || landedCost === undefined) {
+    return null;
+  }
+  const margin = marginPercent(Number(price), landedCost);
+  if (margin === null) {
+    return null;
+  }
+  return (
+    <span
+      className={`mt-0.5 block text-xs ${margin < 0 ? "text-red-500" : "text-slate-400"}`}
+      dir="ltr"
+    >
+      {margin.toFixed(1)}%
+    </span>
+  );
+}
+
 const unitKeys: Record<string, "unit.piece" | "unit.meter"> = {
   piece: "unit.piece",
   meter: "unit.meter",
@@ -54,7 +82,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   const { dict, locale } = await getServerDictionary();
 
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
 
   if (!authData.user) {
     redirect("/signin");
@@ -66,6 +94,9 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   const permissions = await getEffectivePermissions();
   const canManageProducts = hasPermission(permissions, "manage_products");
   const canViewLoadedCost = hasPermission(permissions, "view_loaded_cost");
+  // Margin display is gated on view_product_costs (it needs the real cost);
+  // this is separate from the loaded-cost column's view_loaded_cost gate.
+  const canViewProductCosts = hasPermission(permissions, "view_product_costs");
 
   let productsQuery = supabase
     .from("products")
@@ -86,22 +117,48 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
   // Only fetch prices for the products on this page — otherwise this pulls
   // every price row in the org for a 20-row page.
-  const { data: prices } = productIds.length
-    ? await supabase
+  const pricesPromise = productIds.length
+    ? supabase
         .from("product_prices")
         .select("product_id, price_wholesale, price_craftsman, price_shop, price_retail")
         .in("product_id", productIds)
-    : { data: [] };
+    : Promise.resolve({ data: [] });
 
-  const priceByProduct = new Map((prices ?? []).map((p) => [p.product_id, p]));
-
-  const { data: productImages } = productIds.length
-    ? await supabase
+  const productImagesPromise = productIds.length
+    ? supabase
         .from("product_images")
         .select("id, product_id, storage_path, is_primary, sort_order")
         .in("product_id", productIds)
         .order("sort_order", { ascending: true })
-    : { data: [] };
+    : Promise.resolve({ data: [] });
+
+  const loadedCostsPromise = canViewLoadedCost && productIds.length
+    ? supabase
+        .from("v_product_loaded_cost")
+        .select("product_id, loaded_cost")
+        .in("product_id", productIds)
+    : Promise.resolve({ data: [] });
+
+  const productCostsPromise = canViewProductCosts && productIds.length
+    ? supabase
+        .from("product_costs")
+        .select("product_id, factory_price, shipping_cost, customs_cost")
+        .in("product_id", productIds)
+    : Promise.resolve({ data: [] });
+
+  const [
+    { data: prices },
+    { data: productImages },
+    { data: loadedCosts },
+    { data: productCosts },
+  ] = await Promise.all([
+    pricesPromise,
+    productImagesPromise,
+    loadedCostsPromise,
+    productCostsPromise,
+  ]);
+
+  const priceByProduct = new Map((prices ?? []).map((p) => [p.product_id, p]));
 
   const imagesByProduct = new Map<string, ProductImage[]>();
 
@@ -111,17 +168,23 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     imagesByProduct.set(image.product_id, images);
   }
 
-  let loadedCostByProduct = new Map<string, number>();
+  const loadedCostByProduct = new Map<string, number>(
+    (loadedCosts ?? []).map((cost) => [cost.product_id, cost.loaded_cost])
+  );
 
-  if (canViewLoadedCost) {
-    const { data: costs } = await supabase
-      .from("v_product_loaded_cost")
-      .select("product_id, loaded_cost");
-
-    loadedCostByProduct = new Map(
-      (costs ?? []).map((c) => [c.product_id, c.loaded_cost])
-    );
-  }
+  // Landed cost per product for the margin display — summed from product_costs,
+  // whose RLS is gated by view_product_costs (the same permission this needs),
+  // so it's readable exactly when margins should be shown.
+  // product_costs.product_id is the table's primary key, so each product can
+  // contribute at most one row and Map construction cannot overwrite a peer.
+  const marginLandedCostByProduct = new Map(
+    (productCosts ?? []).map((cost) => [
+      cost.product_id,
+      Number(cost.factory_price ?? 0) +
+        Number(cost.shipping_cost ?? 0) +
+        Number(cost.customs_cost ?? 0),
+    ])
+  );
 
   const isEmpty = !products || products.length === 0;
 
@@ -230,15 +293,39 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                     <td className={tdClass}>{unitKey ? dict[unitKey] : product.unit_of_measure}</td>
                     <td className={tdClass} dir="ltr">
                       {price?.price_wholesale ?? "—"}
+                      {canViewProductCosts && (
+                        <MarginLine
+                          price={price?.price_wholesale}
+                          landedCost={marginLandedCostByProduct.get(product.id)}
+                        />
+                      )}
                     </td>
                     <td className={tdClass} dir="ltr">
                       {price?.price_craftsman ?? "—"}
+                      {canViewProductCosts && (
+                        <MarginLine
+                          price={price?.price_craftsman}
+                          landedCost={marginLandedCostByProduct.get(product.id)}
+                        />
+                      )}
                     </td>
                     <td className={tdClass} dir="ltr">
                       {price?.price_shop ?? "—"}
+                      {canViewProductCosts && (
+                        <MarginLine
+                          price={price?.price_shop}
+                          landedCost={marginLandedCostByProduct.get(product.id)}
+                        />
+                      )}
                     </td>
                     <td className={tdClass} dir="ltr">
                       {price?.price_retail ?? "—"}
+                      {canViewProductCosts && (
+                        <MarginLine
+                          price={price?.price_retail}
+                          landedCost={marginLandedCostByProduct.get(product.id)}
+                        />
+                      )}
                     </td>
                     {canViewLoadedCost && (
                       <td className={tdClass} dir="ltr">

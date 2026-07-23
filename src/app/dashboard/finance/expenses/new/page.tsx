@@ -2,12 +2,13 @@ import { createClient } from "@/lib/supabase/server";
 import { ExpenseForm } from "./expense-form";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
+import { getCurrentUser } from "@/lib/auth.server";
 import { hasPermission } from "@/lib/permissions";
 import { mutedTextClass, pageTitleClass } from "@/lib/ui";
 
 export default async function NewExpensePage() {
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
   const { dict } = await getServerDictionary();
 
   const permissions = await getEffectivePermissions();
@@ -20,10 +21,17 @@ export default async function NewExpensePage() {
     );
   }
 
+  // Live category list (RLS scopes it to the caller's organization). The form
+  // shows these plus an inline "+ Add new category" option.
+  const { data: categories } = await supabase
+    .from("expense_categories")
+    .select("name")
+    .order("name");
+
   return (
     <main className="mx-auto max-w-md px-8 py-6">
       <h1 className={`${pageTitleClass} mb-6`}>{dict["finance.expenses.newTitle"]}</h1>
-      <ExpenseForm />
+      <ExpenseForm categories={(categories ?? []).map((category) => category.name)} />
     </main>
   );
 }

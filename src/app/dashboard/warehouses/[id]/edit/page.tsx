@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { WarehouseEditForm } from "./warehouse-edit-form";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
+import { getCurrentUser } from "@/lib/auth.server";
 import { hasPermission } from "@/lib/permissions";
 import { mutedTextClass, pageTitleClass } from "@/lib/ui";
 
@@ -13,7 +14,7 @@ type PageProps = {
 export default async function EditWarehousePage({ params }: PageProps) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
   const { dict } = await getServerDictionary();
 
   if (!authData.user) {

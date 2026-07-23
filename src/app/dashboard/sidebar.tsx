@@ -14,6 +14,7 @@ import {
   Handshake,
   BarChart3,
   ShieldCheck,
+  Tag,
   Vault,
   Wind,
   X,
@@ -56,6 +57,11 @@ export function Sidebar({ dict, permissions }: { dict: Dictionary; permissions: 
       labelKey: "nav.group.catalog",
       items: [
         { href: "/dashboard/products", labelKey: "nav.products", icon: Package },
+        // Offers (quantity-based pricing) is management-only, gated by the same
+        // permission as writing products.
+        ...(can("manage_products")
+          ? [{ href: "/dashboard/offers", labelKey: "nav.offers" as const, icon: Tag }]
+          : []),
         { href: "/dashboard/customers", labelKey: "nav.customers", icon: Users },
       ],
     },

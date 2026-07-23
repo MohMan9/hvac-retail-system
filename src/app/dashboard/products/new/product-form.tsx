@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createProduct } from "./actions";
+import { PricingCostSection } from "../pricing-cost-section";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { truncateBarcode } from "@/lib/barcode";
 import { btnPrimary, inputClass, labelClass } from "@/lib/ui";
@@ -114,63 +115,7 @@ export function ProductForm({
         <input name="warranty_months" type="number" min={0} dir="ltr" className={inputClass} />
       </div>
 
-      <fieldset className={fieldsetClass}>
-        <legend className={legendClass}>{t("productForm.pricingLegend")}</legend>
-
-        <div className="flex flex-col gap-4">
-          <div>
-            <label className={labelClass}>{t("productForm.wholesalePrice")}</label>
-            <input
-              name="price_wholesale"
-              type="number"
-              step="0.01"
-              min={0}
-              required
-              dir="ltr"
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <label className={labelClass}>{t("productForm.craftsmanPrice")}</label>
-            <input
-              name="price_craftsman"
-              type="number"
-              step="0.01"
-              min={0}
-              required
-              dir="ltr"
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <label className={labelClass}>{t("productForm.shopPrice")}</label>
-            <input
-              name="price_shop"
-              type="number"
-              step="0.01"
-              min={0}
-              required
-              dir="ltr"
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <label className={labelClass}>{t("productForm.retailPrice")}</label>
-            <input
-              name="price_retail"
-              type="number"
-              step="0.01"
-              min={0}
-              required
-              dir="ltr"
-              className={inputClass}
-            />
-          </div>
-        </div>
-      </fieldset>
+      <PricingCostSection canViewCosts={canViewCosts} />
 
       <fieldset className={fieldsetClass}>
         <legend className={legendClass}>{t("productForm.initialStockLegend")}</legend>
@@ -208,50 +153,6 @@ export function ProductForm({
           <legend className={legendClass}>{t("productForm.imagesLegend")}</legend>
           <label className={labelClass}>{t("productForm.imagesLabel")}</label>
           <input name="images" type="file" accept="image/*" multiple className={inputClass} />
-        </fieldset>
-      )}
-
-      {canViewCosts && (
-        <fieldset className={fieldsetClass}>
-          <legend className={legendClass}>{t("productForm.costLegend")}</legend>
-
-          <div className="flex flex-col gap-4">
-            <div>
-              <label className={labelClass}>{t("productForm.factoryPrice")}</label>
-              <input
-                name="factory_price"
-                type="number"
-                step="0.01"
-                min={0}
-                dir="ltr"
-                className={inputClass}
-              />
-            </div>
-
-            <div>
-              <label className={labelClass}>{t("productForm.shippingCost")}</label>
-              <input
-                name="shipping_cost"
-                type="number"
-                step="0.01"
-                min={0}
-                dir="ltr"
-                className={inputClass}
-              />
-            </div>
-
-            <div>
-              <label className={labelClass}>{t("productForm.customsCost")}</label>
-              <input
-                name="customs_cost"
-                type="number"
-                step="0.01"
-                min={0}
-                dir="ltr"
-                className={inputClass}
-              />
-            </div>
-          </div>
         </fieldset>
       )}
 

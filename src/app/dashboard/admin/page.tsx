@@ -3,6 +3,7 @@ import { AdminForm } from "./admin-form";
 import { UserList } from "./user-list";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
+import { getCurrentUser } from "@/lib/auth.server";
 import { hasPermission } from "@/lib/permissions";
 import { cardClass, mutedTextClass, pageTitleClass, sectionTitleClass } from "@/lib/ui";
 
@@ -16,7 +17,7 @@ type AdminUserRow = {
 
 export default async function AdminPage() {
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
   const { dict } = await getServerDictionary();
 
   const { data: profile } = authData.user

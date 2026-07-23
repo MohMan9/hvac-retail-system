@@ -2,13 +2,14 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
+import { getCurrentUser } from "@/lib/auth.server";
 import { hasPermission } from "@/lib/permissions";
 import { RegisterClient } from "./register-client";
 import { pageTitleClass } from "@/lib/ui";
 
 export default async function CashRegisterPage() {
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
 
   if (!authData.user) {
     redirect("/signin");
@@ -50,20 +51,23 @@ export default async function CashRegisterPage() {
     openedByName = openerProfile?.full_name ?? null;
 
     // Live preview of what closing would currently compute — the official
-    // total is only locked in by the close_cash_session RPC itself. Filter on
-    // completed_at (when the sale was actually finalized), matching the RPC —
-    // an invoice created before the session opened but completed after it
-    // still belongs to this session.
-    const { data: cashInvoices } = await supabase
-      .from("invoices")
-      .select("total")
-      .eq("organization_id", profile.organization_id)
-      .eq("status", "completed")
+    // total is only locked in by the close_cash_session RPC itself. Sum the
+    // CASH portions from invoice_payments (not invoices.total), so a split
+    // payment only contributes its cash slice — matching how the RPC now
+    // computes expected_cash. Filter on the parent invoice's completed_at
+    // (when the sale was actually finalized), matching the RPC — an invoice
+    // created before the session opened but completed after it still belongs
+    // to this session.
+    const { data: cashPayments } = await supabase
+      .from("invoice_payments")
+      .select("amount, invoices!inner(organization_id, status, completed_at)")
       .eq("payment_method", "cash")
-      .gte("completed_at", openSession.opened_at);
+      .eq("invoices.organization_id", profile.organization_id)
+      .eq("invoices.status", "completed")
+      .gte("invoices.completed_at", openSession.opened_at);
 
-    runningCashTotal = (cashInvoices ?? []).reduce(
-      (sum, invoice) => sum + Number(invoice.total ?? 0),
+    runningCashTotal = (cashPayments ?? []).reduce(
+      (sum, payment) => sum + Number(payment.amount ?? 0),
       0
     );
   }
@@ -72,7 +76,7 @@ export default async function CashRegisterPage() {
     ? await supabase
         .from("cash_sessions")
         .select(
-          "id, opened_at, closed_at, expected_cash, actual_cash_counted, cash_difference, visa_total"
+          "id, opened_at, closed_at, expected_cash, actual_cash_counted, cash_difference, visa_total, cheque_total"
         )
         .eq("organization_id", profile.organization_id)
         .not("closed_at", "is", null)

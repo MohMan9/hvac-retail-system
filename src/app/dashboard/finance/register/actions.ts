@@ -37,6 +37,7 @@ type CloseResult =
         actual_cash_counted: number;
         cash_difference: number;
         visa_total: number;
+        cheque_total: number;
       };
     }
   | { success: false; error: string };

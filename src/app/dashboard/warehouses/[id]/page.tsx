@@ -4,6 +4,7 @@ import { ArrowDownToLine, ArrowUpFromLine, Package2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
+import { getCurrentUser } from "@/lib/auth.server";
 import { hasPermission } from "@/lib/permissions";
 import { displayName } from "@/lib/display-name";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -26,7 +27,7 @@ type PageProps = {
 export default async function WarehouseDetailPage({ params }: PageProps) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
   const { dict, locale } = await getServerDictionary();
 
   if (!authData.user) {

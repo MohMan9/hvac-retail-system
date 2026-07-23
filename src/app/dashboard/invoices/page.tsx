@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Receipt, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth.server";
 import { Pagination } from "@/components/pagination";
 import { PAGE_SIZE, buildPageHref, pageRange, parsePage, sanitizeSearchTerm } from "@/lib/pagination";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
@@ -61,7 +62,7 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
   const { dict } = await getServerDictionary();
 
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
 
   if (!authData.user) {
     redirect("/signin");

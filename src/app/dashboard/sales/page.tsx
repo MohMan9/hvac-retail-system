@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth.server";
+import { todayInShopTimezone } from "@/lib/date";
 import { SaleForm } from "./SaleForm";
 
 export default async function SalesPage() {
   const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
+  const authData = await getCurrentUser();
 
   if (!authData.user) {
     redirect("/signin");
@@ -57,6 +59,41 @@ export default async function SalesPage() {
     .select("product_id, warehouse_id, quantity")
     .eq("organization_id", profile.organization_id);
 
+  // Quantity-based pricing rules ("offers"): when a cart line's quantity falls
+  // in a rule's range, its price overrides the customer-tier price.
+  const { data: offerRules } = await supabase
+    .from("quantity_price_rules")
+    .select("id, product_id, min_qty, max_qty, price")
+    .eq("organization_id", profile.organization_id);
+
+  // Top sellers: total quantity sold per product across COMPLETED invoices in
+  // the last 30 days, scoped to the org via the inner-joined invoices row.
+  // PostgREST has no GROUP BY, so we pull the qualifying invoice_items and sum
+  // per product in memory, then keep the 10 highest as a quick-add row.
+  const cutoff = new Date(`${todayInShopTimezone()}T00:00:00Z`);
+  cutoff.setUTCDate(cutoff.getUTCDate() - 30);
+  const cutoffDate = cutoff.toISOString().slice(0, 10);
+
+  const { data: recentSoldItems } = await supabase
+    .from("invoice_items")
+    .select("product_id, quantity, invoices!inner(organization_id, status, sale_date)")
+    .eq("invoices.organization_id", profile.organization_id)
+    .eq("invoices.status", "completed")
+    .gte("invoices.sale_date", cutoffDate);
+
+  const soldQtyByProduct = new Map<string, number>();
+  for (const item of recentSoldItems ?? []) {
+    soldQtyByProduct.set(
+      item.product_id,
+      (soldQtyByProduct.get(item.product_id) ?? 0) + Number(item.quantity ?? 0)
+    );
+  }
+
+  const topSellerIds = [...soldQtyByProduct.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([productId]) => productId);
+
   const saleProducts =
     products?.map((product) => {
       const price = Array.isArray(product.product_prices)
@@ -88,6 +125,14 @@ export default async function SalesPage() {
         }))}
         vatRate={Number(organization?.vat_rate ?? 0)}
         stock={inventory ?? []}
+        offerRules={(offerRules ?? []).map((rule) => ({
+          id: rule.id,
+          product_id: rule.product_id,
+          min_qty: Number(rule.min_qty),
+          max_qty: Number(rule.max_qty),
+          price: Number(rule.price),
+        }))}
+        topSellerIds={topSellerIds}
       />
     </main>
   );
