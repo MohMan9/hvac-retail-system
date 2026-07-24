@@ -8,6 +8,14 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseHost = supabaseUrl ? new URL(supabaseUrl).hostname : undefined;
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Product creation submits images through a Server Action. Keep this below
+    // Vercel's 4.5 MB function payload ceiling; the form and action separately
+    // cap image bytes at 3.5 MB to leave room for multipart field metadata.
+    serverActions: {
+      bodySizeLimit: "4mb",
+    },
+  },
   images: {
     remotePatterns: supabaseHost
       ? [

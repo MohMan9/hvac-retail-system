@@ -193,6 +193,8 @@
   "productForm.retailPrice": "سعر القطاعي",
   "productForm.imagesLegend": "الصور",
   "productForm.imagesLabel": "صور المنتج",
+  "productForm.imagesSizeHelp": "الحد الأقصى لإجمالي حجم الصور: 3.5 ميجابايت.",
+  "productForm.imagesTooLarge": "يجب ألا يتجاوز إجمالي حجم صور المنتج 3.5 ميجابايت.",
   "productForm.costLegend": "التكلفة",
   "productForm.factoryPrice": "سعر المصنع",
   "productForm.shippingCost": "تكلفة الشحن",

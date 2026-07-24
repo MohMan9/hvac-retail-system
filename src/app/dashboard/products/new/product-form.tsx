@@ -5,6 +5,7 @@ import { createProduct } from "./actions";
 import { PricingCostSection } from "../pricing-cost-section";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { truncateBarcode } from "@/lib/barcode";
+import { MAX_PRODUCT_IMAGE_TOTAL_BYTES } from "@/lib/product-image-limits";
 import { btnPrimary, inputClass, labelClass } from "@/lib/ui";
 
 type Warehouse = { id: string; name_en: string | null };
@@ -38,6 +39,17 @@ export function ProductForm({
   async function handleSubmit(formData: FormData) {
     setIsSubmitting(true);
     setError(null);
+
+    const totalImageBytes = formData
+      .getAll("images")
+      .filter((value): value is File => value instanceof File && value.size > 0)
+      .reduce((total, file) => total + file.size, 0);
+
+    if (totalImageBytes > MAX_PRODUCT_IMAGE_TOTAL_BYTES) {
+      setError(t("productForm.imagesTooLarge"));
+      setIsSubmitting(false);
+      return;
+    }
 
     const result = await createProduct(formData);
 
@@ -159,6 +171,7 @@ export function ProductForm({
           <legend className={legendClass}>{t("productForm.imagesLegend")}</legend>
           <label className={labelClass}>{t("productForm.imagesLabel")}</label>
           <input name="images" type="file" accept="image/*" multiple className={inputClass} />
+          <p className="mt-1 text-xs text-slate-500">{t("productForm.imagesSizeHelp")}</p>
         </fieldset>
       )}
 

@@ -8,6 +8,7 @@ import {
 } from "@/lib/product-images";
 import { todayInShopTimezone } from "@/lib/date";
 import { parseSerialSuffixLength, truncateBarcode } from "@/lib/barcode";
+import { MAX_PRODUCT_IMAGE_TOTAL_BYTES } from "@/lib/product-image-limits";
 import { checkPermission } from "@/lib/permissions.server";
 import { redirect } from "next/navigation";
 
@@ -50,6 +51,14 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
   // prefix-matches against.
   const serial_suffix_length = parseSerialSuffixLength(formData.get("serial_suffix_length"));
   const barcode = truncateBarcode(formData.get("barcode") as string, serial_suffix_length);
+  const imageFiles = formData
+    .getAll("images")
+    .filter((value): value is File => value instanceof File && value.size > 0);
+  const totalImageBytes = imageFiles.reduce((total, file) => total + file.size, 0);
+
+  if (totalImageBytes > MAX_PRODUCT_IMAGE_TOTAL_BYTES) {
+    return { success: false, error: "Product images must total 3.5 MB or less." };
+  }
 
   // 1) Create the product itself.
   const { data: newProduct, error: productError } = await supabase
@@ -73,9 +82,6 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
     return { success: false, error: productError?.message ?? "Failed to create product" };
   }
 
-  const imageFiles = formData
-    .getAll("images")
-    .filter((value): value is File => value instanceof File && value.size > 0);
   const imageFailures: string[] = [];
 
   if (imageFiles.length > 0) {

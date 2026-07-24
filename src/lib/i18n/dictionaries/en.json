@@ -193,6 +193,8 @@
   "productForm.retailPrice": "Retail Price",
   "productForm.imagesLegend": "Images",
   "productForm.imagesLabel": "Product Images",
+  "productForm.imagesSizeHelp": "Maximum combined image size: 3.5 MB.",
+  "productForm.imagesTooLarge": "Product images must total 3.5 MB or less.",
   "productForm.costLegend": "Cost",
   "productForm.factoryPrice": "Factory Price",
   "productForm.shippingCost": "Shipping Cost",
