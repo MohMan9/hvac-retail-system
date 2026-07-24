@@ -1,18 +1,13 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import {
-  buildProductImageStoragePath,
-  cleanProductImageFilename,
-  PRODUCT_IMAGE_BUCKETS,
-} from "@/lib/product-images";
 import { todayInShopTimezone } from "@/lib/date";
 import { parseSerialSuffixLength, truncateBarcode } from "@/lib/barcode";
-import { MAX_PRODUCT_IMAGE_TOTAL_BYTES } from "@/lib/product-image-limits";
 import { checkPermission } from "@/lib/permissions.server";
-import { redirect } from "next/navigation";
 
-type CreateProductResult = { success: false; error: string };
+type CreateProductResult =
+  | { success: true; productId: string; message: string }
+  | { success: false; error: string };
 
 export async function createProduct(formData: FormData): Promise<CreateProductResult> {
   const supabase = await createClient();
@@ -51,14 +46,6 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
   // prefix-matches against.
   const serial_suffix_length = parseSerialSuffixLength(formData.get("serial_suffix_length"));
   const barcode = truncateBarcode(formData.get("barcode") as string, serial_suffix_length);
-  const imageFiles = formData
-    .getAll("images")
-    .filter((value): value is File => value instanceof File && value.size > 0);
-  const totalImageBytes = imageFiles.reduce((total, file) => total + file.size, 0);
-
-  if (totalImageBytes > MAX_PRODUCT_IMAGE_TOTAL_BYTES) {
-    return { success: false, error: "Product images must total 3.5 MB or less." };
-  }
 
   // 1) Create the product itself.
   const { data: newProduct, error: productError } = await supabase
@@ -80,50 +67,6 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
 
   if (productError || !newProduct) {
     return { success: false, error: productError?.message ?? "Failed to create product" };
-  }
-
-  const imageFailures: string[] = [];
-
-  if (imageFiles.length > 0) {
-    for (const [index, file] of imageFiles.entries()) {
-      const filename = cleanProductImageFilename(file.name);
-      const objectPath = `${profile.organization_id}/${newProduct.id}/${filename}`;
-      const imageBody = await file.arrayBuffer();
-      let uploadedStoragePath: string | null = null;
-      const bucketErrors: string[] = [];
-
-      for (const bucket of PRODUCT_IMAGE_BUCKETS) {
-        const { error: uploadError } = await supabase.storage
-          .from(bucket)
-          .upload(objectPath, imageBody, {
-            contentType: file.type || undefined,
-            upsert: false,
-          });
-
-        if (!uploadError) {
-          uploadedStoragePath = buildProductImageStoragePath(bucket, objectPath);
-          break;
-        }
-
-        bucketErrors.push(`${bucket}: ${uploadError.message}`);
-      }
-
-      if (!uploadedStoragePath) {
-        imageFailures.push(`${file.name}: storage upload failed (${bucketErrors.join("; ")})`);
-        continue;
-      }
-
-      const { error: imageError } = await supabase.from("product_images").insert({
-        product_id: newProduct.id,
-        storage_path: uploadedStoragePath,
-        is_primary: index === 0,
-        sort_order: index,
-      });
-
-      if (imageError) {
-        imageFailures.push(`${file.name}: database row failed (${imageError.message})`);
-      }
-    }
   }
 
   // 2) Create the pricing row. supabase-js has no cross-table transaction, so
@@ -177,10 +120,7 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
     }
   }
 
-  let successMessage =
-    imageFiles.length > 0 && imageFailures.length > 0
-      ? `Product created. ${imageFailures.length} of ${imageFiles.length} images failed: ${imageFailures.join("; ")}`
-      : "Product created.";
+  let successMessage = "Product created.";
 
   // 4) Optional initial stock. Only insert into stock_transfers — never
   //    write to `inventory` directly, a DB trigger updates it from this row.
@@ -207,5 +147,5 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
     }
   }
 
-  redirect(`/dashboard/products?message=${encodeURIComponent(successMessage)}`);
+  return { success: true, productId: newProduct.id, message: successMessage };
 }

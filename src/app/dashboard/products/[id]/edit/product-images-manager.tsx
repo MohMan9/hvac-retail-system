@@ -4,8 +4,12 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Star, Trash2, Upload } from "lucide-react";
-import { deleteProductImage, setPrimaryImage, uploadProductImages } from "./actions";
+import { deleteProductImage, setPrimaryImage } from "./actions";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
+import {
+  uploadProductImagesDirect,
+  type ProductImageUploadProgress,
+} from "@/lib/product-image-upload.client";
 import {
   btnPrimary,
   btnDestructiveOutlineSm,
@@ -36,28 +40,44 @@ export function ProductImagesManager({
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<ProductImageUploadProgress | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProductImage | null>(null);
 
   async function handleUpload(formData: FormData) {
     setError(null);
-    const files = formData.getAll("images").filter((v) => v instanceof File && v.size > 0);
+    setUploadProgress(null);
+    const files = formData
+      .getAll("images")
+      .filter((value): value is File => value instanceof File && value.size > 0);
     if (files.length === 0) {
       return;
     }
 
     setIsUploading(true);
-    const result = await uploadProductImages(productId, formData);
-    setIsUploading(false);
+    try {
+      const result = await uploadProductImagesDirect(productId, files, setUploadProgress);
 
-    if (!result.success) {
-      setError(result.error);
-      return;
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+
+      fileInputRef.current?.form?.reset();
+      router.refresh();
+
+      if (result.failures.length > 0) {
+        setError(
+          `${result.uploadedCount} image(s) uploaded, but some failed: ${result.failures.join("; ")}`
+        );
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Image upload failed.");
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(null);
     }
-
-    fileInputRef.current?.form?.reset();
-    router.refresh();
   }
 
   async function handleSetPrimary(imageId: string) {
@@ -160,6 +180,17 @@ export function ProductImagesManager({
             <Upload className="h-4 w-4" />
             {isUploading ? t("productEdit.uploading") : t("productEdit.uploadImages")}
           </button>
+          <p className="mt-2 text-xs text-slate-500">{t("productEdit.largeImageHelp")}</p>
+          {uploadProgress && (
+            <p className="mt-2 text-xs text-blue-600" dir="ltr">
+              {t("productEdit.uploadProgress")} {uploadProgress.fileIndex}/
+              {uploadProgress.fileCount} —{" "}
+              {Math.round(
+                (uploadProgress.bytesUploaded / Math.max(uploadProgress.bytesTotal, 1)) * 100
+              )}
+              %
+            </p>
+          )}
         </fieldset>
       </form>
 

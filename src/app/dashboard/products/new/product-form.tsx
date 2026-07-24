@@ -1,11 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createProduct } from "./actions";
 import { PricingCostSection } from "../pricing-cost-section";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 import { truncateBarcode } from "@/lib/barcode";
-import { MAX_PRODUCT_IMAGE_TOTAL_BYTES } from "@/lib/product-image-limits";
+import {
+  uploadProductImagesDirect,
+  type ProductImageUploadProgress,
+} from "@/lib/product-image-upload.client";
 import { btnPrimary, inputClass, labelClass } from "@/lib/ui";
 
 type Warehouse = { id: string; name_en: string | null };
@@ -25,8 +29,10 @@ export function ProductForm({
   warehouses: Warehouse[];
 }) {
   const { t } = useLocale();
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<ProductImageUploadProgress | null>(null);
   // Tracked for the serialized-barcode live preview. The raw serial-suffix
   // string is kept as typed (no reformatting) and only parsed for display.
   const [barcode, setBarcode] = useState("");
@@ -39,25 +45,47 @@ export function ProductForm({
   async function handleSubmit(formData: FormData) {
     setIsSubmitting(true);
     setError(null);
+    setUploadProgress(null);
 
-    const totalImageBytes = formData
+    const imageFiles = formData
       .getAll("images")
-      .filter((value): value is File => value instanceof File && value.size > 0)
-      .reduce((total, file) => total + file.size, 0);
+      .filter((value): value is File => value instanceof File && value.size > 0);
+    // Never pass File objects to a Server Action: Vercel rejects request bodies
+    // above 4.5 MB. The browser uploads them directly after the small product
+    // record has been created.
+    formData.delete("images");
 
-    if (totalImageBytes > MAX_PRODUCT_IMAGE_TOTAL_BYTES) {
-      setError(t("productForm.imagesTooLarge"));
+    try {
+      const result = await createProduct(formData);
+
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+
+      let message = result.message;
+
+      if (imageFiles.length > 0) {
+        const uploadResult = await uploadProductImagesDirect(
+          result.productId,
+          imageFiles,
+          setUploadProgress
+        );
+
+        if (!uploadResult.success) {
+          message = `${message} Images could not be uploaded: ${uploadResult.error}`;
+        } else if (uploadResult.failures.length > 0) {
+          message = `${message} ${uploadResult.uploadedCount} image(s) uploaded, but some failed: ${uploadResult.failures.join("; ")}`;
+        }
+      }
+
+      router.push(`/dashboard/products?message=${encodeURIComponent(message)}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Product creation failed.");
+    } finally {
+      setUploadProgress(null);
       setIsSubmitting(false);
-      return;
     }
-
-    const result = await createProduct(formData);
-
-    if (!result.success) {
-      setError(result.error);
-    }
-
-    setIsSubmitting(false);
   }
 
   return (
@@ -171,7 +199,17 @@ export function ProductForm({
           <legend className={legendClass}>{t("productForm.imagesLegend")}</legend>
           <label className={labelClass}>{t("productForm.imagesLabel")}</label>
           <input name="images" type="file" accept="image/*" multiple className={inputClass} />
-          <p className="mt-1 text-xs text-slate-500">{t("productForm.imagesSizeHelp")}</p>
+          <p className="mt-1 text-xs text-slate-500">{t("productForm.largeImageHelp")}</p>
+          {uploadProgress && (
+            <p className="mt-2 text-xs text-blue-600" dir="ltr">
+              {t("productForm.uploadProgress")} {uploadProgress.fileIndex}/
+              {uploadProgress.fileCount} —{" "}
+              {Math.round(
+                (uploadProgress.bytesUploaded / Math.max(uploadProgress.bytesTotal, 1)) * 100
+              )}
+              %
+            </p>
+          )}
         </fieldset>
       )}
 

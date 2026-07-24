@@ -4,12 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { checkPermission } from "@/lib/permissions.server";
 import { parseSerialSuffixLength, resolveEditedBarcode } from "@/lib/barcode";
-import {
-  buildProductImageStoragePath,
-  cleanProductImageFilename,
-  parseProductImageStoragePath,
-  PRODUCT_IMAGE_BUCKETS,
-} from "@/lib/product-images";
+import { parseProductImageStoragePath } from "@/lib/product-images";
 import { redirect } from "next/navigation";
 
 type UpdateProductResult = { success: false; error: string };
@@ -205,129 +200,6 @@ async function requireImageManager(): Promise<
   }
 
   return { supabase };
-}
-
-// Upload one or more images for an existing product. Mirrors the create form's
-// mechanism: Supabase Storage under product-images/{org_id}/{product_id}/, with
-// a matching product_images row per file. New uploads are is_primary = false,
-// UNLESS the product had zero images before — then the first new one becomes
-// primary automatically.
-export async function uploadProductImages(
-  productId: string,
-  formData: FormData
-): Promise<ImageActionResult> {
-  const guard = await requireImageManager();
-  if ("error" in guard) {
-    return { success: false, error: guard.error };
-  }
-  const { supabase } = guard;
-
-  const { data: authData } = await supabase.auth.getUser();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", authData.user!.id)
-    .single();
-
-  if (!profile) {
-    return { success: false, error: "No profile found for this account" };
-  }
-
-  // Confirm the product exists in the caller's org before building paths.
-  const { data: product } = await supabase
-    .from("products")
-    .select("id")
-    .eq("id", productId)
-    .eq("organization_id", profile.organization_id)
-    .single();
-
-  if (!product) {
-    return { success: false, error: "Product not found" };
-  }
-
-  const imageFiles = formData
-    .getAll("images")
-    .filter((value): value is File => value instanceof File && value.size > 0);
-
-  if (imageFiles.length === 0) {
-    return { success: false, error: "Choose at least one image to upload." };
-  }
-
-  // Existing images decide the primary flag and the next sort_order.
-  const { data: existing } = await supabase
-    .from("product_images")
-    .select("id, sort_order")
-    .eq("product_id", productId);
-
-  const hadImages = (existing ?? []).length > 0;
-  let nextSortOrder =
-    (existing ?? []).reduce((max, row) => Math.max(max, Number(row.sort_order ?? 0)), -1) + 1;
-
-  const failures: string[] = [];
-  let uploadedCount = 0;
-
-  for (const file of imageFiles) {
-    const filename = cleanProductImageFilename(file.name);
-    const objectPath = `${profile.organization_id}/${productId}/${filename}`;
-    const imageBody = await file.arrayBuffer();
-    let uploadedStoragePath: string | null = null;
-    const bucketErrors: string[] = [];
-
-    for (const bucket of PRODUCT_IMAGE_BUCKETS) {
-      const { error: uploadError } = await supabase.storage
-        .from(bucket)
-        .upload(objectPath, imageBody, {
-          contentType: file.type || undefined,
-          upsert: false,
-        });
-
-      if (!uploadError) {
-        uploadedStoragePath = buildProductImageStoragePath(bucket, objectPath);
-        break;
-      }
-
-      bucketErrors.push(`${bucket}: ${uploadError.message}`);
-    }
-
-    if (!uploadedStoragePath) {
-      failures.push(`${file.name}: storage upload failed (${bucketErrors.join("; ")})`);
-      continue;
-    }
-
-    // Primary only when the product had NO images before and this is the first
-    // one we successfully add in this batch.
-    const isPrimary = !hadImages && uploadedCount === 0;
-
-    const { error: imageError } = await supabase.from("product_images").insert({
-      product_id: productId,
-      storage_path: uploadedStoragePath,
-      is_primary: isPrimary,
-      sort_order: nextSortOrder,
-    });
-
-    if (imageError) {
-      failures.push(`${file.name}: database row failed (${imageError.message})`);
-      continue;
-    }
-
-    nextSortOrder += 1;
-    uploadedCount += 1;
-  }
-
-  revalidatePath(`/dashboard/products/${productId}/edit`);
-
-  if (uploadedCount === 0) {
-    return { success: false, error: `Upload failed: ${failures.join("; ")}` };
-  }
-
-  if (failures.length > 0) {
-    return {
-      success: false,
-      error: `${uploadedCount} image(s) uploaded, but some failed: ${failures.join("; ")}`,
-    };
-  }
-
-  return { success: true };
 }
 
 // Make one image the product's primary and clear the flag on every other image
