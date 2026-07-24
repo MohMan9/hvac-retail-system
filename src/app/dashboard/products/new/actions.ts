@@ -39,6 +39,8 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
   const name_en = (formData.get("name_en") as string) || null;
   const description_ar = (formData.get("description_ar") as string) || null;
   const description_en = (formData.get("description_en") as string) || null;
+  // Optional supplier reference/model number — unrelated to the barcode.
+  const item_number = ((formData.get("item_number") as string) ?? "").trim() || null;
   const unit_of_measure = formData.get("unit_of_measure") as string;
   const warrantyRaw = formData.get("warranty_months") as string;
   const warranty_months = warrantyRaw ? Number(warrantyRaw) : null;
@@ -59,6 +61,7 @@ export async function createProduct(formData: FormData): Promise<CreateProductRe
       description_ar,
       description_en,
       barcode,
+      item_number,
       serial_suffix_length,
       unit_of_measure,
       warranty_months,

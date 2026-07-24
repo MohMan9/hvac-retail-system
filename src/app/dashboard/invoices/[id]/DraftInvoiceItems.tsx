@@ -46,6 +46,7 @@ type InvoiceItemRow = {
   discountNote: string | null;
   discountApprovedBy: string | null;
   discountRejectedBy: string | null;
+  scannedBarcode: string | null;
 };
 
 function priceForTier(product: Product, tier: CustomerTier) {
@@ -286,7 +287,16 @@ export function DraftInvoiceItems({
 
             return (
               <tr key={item.id} className="border-b border-slate-100 last:border-0 align-top">
-                <td className={tdClass}>{item.productName}</td>
+                {/* Scanned code = the specific unit sold (serialized products
+                    carry a per-unit suffix the product barcode lacks). */}
+                <td className={tdClass}>
+                  <span className="block">{item.productName}</span>
+                  {item.scannedBarcode && (
+                    <span className="mt-0.5 block text-xs text-slate-400" dir="ltr">
+                      {t("invoiceDetail.scannedCode")}: {item.scannedBarcode}
+                    </span>
+                  )}
+                </td>
                 <td className={tdClass}>{item.warehouseName}</td>
                 <td className={tdClass} dir="ltr">
                   {isEditing && editDraft ? (

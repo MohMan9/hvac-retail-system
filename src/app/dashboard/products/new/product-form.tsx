@@ -89,6 +89,12 @@ export function ProductForm({
       </div>
 
       <div>
+        <label className={labelClass}>{t("productForm.itemNumber")}</label>
+        <input name="item_number" type="text" dir="ltr" className={inputClass} />
+        <p className="mt-1 text-xs text-slate-500">{t("productForm.itemNumberHelp")}</p>
+      </div>
+
+      <div>
         <label className={labelClass}>{t("productForm.serialSuffixLength")}</label>
         <input
           name="serial_suffix_length"

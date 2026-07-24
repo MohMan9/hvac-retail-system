@@ -95,13 +95,16 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
   let productsQuery = supabase
     .from("products")
-    .select("id, barcode, name_ar, name_en, serial_suffix_length, unit_of_measure", { count: "exact" })
+    .select(
+      "id, barcode, item_number, name_ar, name_en, serial_suffix_length, unit_of_measure",
+      { count: "exact" }
+    )
     .order("name_en")
     .range(from, to);
 
   if (q) {
     productsQuery = productsQuery.or(
-      `name_en.ilike.%${q}%,name_ar.ilike.%${q}%,barcode.ilike.%${q}%`
+      `name_en.ilike.%${q}%,name_ar.ilike.%${q}%,barcode.ilike.%${q}%,item_number.ilike.%${q}%`
     );
   }
 
@@ -292,8 +295,15 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                         )}
                       </Link>
                     </td>
+                    {/* Item number rides along under the barcode rather than
+                        taking its own column — this table is already wide. */}
                     <td className={tdClass} dir="ltr">
-                      {product.barcode}
+                      <span className="block">{product.barcode}</span>
+                      {product.item_number && (
+                        <span className="mt-0.5 block text-xs text-slate-400">
+                          {dict["products.colItemNumber"]}: {product.item_number}
+                        </span>
+                      )}
                     </td>
                     <td className={tdClass}>{unitKey ? dict[unitKey] : product.unit_of_measure}</td>
                     <td className={tdClass} dir="ltr">

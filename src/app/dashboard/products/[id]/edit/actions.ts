@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { checkPermission } from "@/lib/permissions.server";
-import { parseSerialSuffixLength, truncateBarcode } from "@/lib/barcode";
+import { parseSerialSuffixLength, resolveEditedBarcode } from "@/lib/barcode";
 import {
   buildProductImageStoragePath,
   cleanProductImageFilename,
@@ -45,15 +45,37 @@ export async function updateProduct(
   const name_en = (formData.get("name_en") as string) || null;
   const description_ar = (formData.get("description_ar") as string) || null;
   const description_en = (formData.get("description_en") as string) || null;
+  // Optional supplier reference/model number — unrelated to the barcode, so it
+  // is never subject to the serial-suffix truncation below.
+  const item_number = ((formData.get("item_number") as string) ?? "").trim() || null;
   const unit_of_measure = formData.get("unit_of_measure") as string;
   const warrantyRaw = formData.get("warranty_months") as string;
   const warranty_months = warrantyRaw ? Number(warrantyRaw) : null;
 
-  // For serialized products the stored barcode is the shared prefix — strip the
-  // per-unit suffix (re-scanning a new full code while serial length > 0
-  // truncates the same way).
+  // Read the CURRENTLY stored barcode fresh from the database. This is the only
+  // trustworthy way to tell "the user re-submitted the untouched, already-
+  // truncated prefix" apart from "the user scanned a genuinely new full code" —
+  // a client-sent original value could be stale or missing entirely.
+  const { data: storedProduct } = await supabase
+    .from("products")
+    .select("barcode")
+    .eq("id", productId)
+    .eq("organization_id", profile.organization_id)
+    .single();
+
+  if (!storedProduct) {
+    return { success: false, error: "Product not found" };
+  }
+
+  // For serialized products the stored barcode is the shared prefix. Only a
+  // genuinely NEW submitted value gets the per-unit suffix stripped; an
+  // unchanged one is saved verbatim, so repeated saves can never chip away at it.
   const serial_suffix_length = parseSerialSuffixLength(formData.get("serial_suffix_length"));
-  const barcode = truncateBarcode(formData.get("barcode") as string, serial_suffix_length);
+  const barcode = resolveEditedBarcode({
+    submitted: (formData.get("barcode") as string) ?? "",
+    current: storedProduct.barcode ?? "",
+    serialSuffixLength: serial_suffix_length,
+  });
 
   // 1) Update the product itself.
   const { error: productError } = await supabase
@@ -64,6 +86,7 @@ export async function updateProduct(
       description_ar,
       description_en,
       barcode,
+      item_number,
       serial_suffix_length,
       unit_of_measure,
       warranty_months,

@@ -77,6 +77,12 @@ type CartItem = {
   unitPrice: string;
   lineDiscount: string;
   discountNote: string;
+  // The EXACT full code scanned for this line, captured before the barcode was
+  // prefix-resolved to a product. For a serialized product this carries the
+  // per-unit suffix the customer actually owns (what a warranty claim needs),
+  // which the product's own `barcode` column never stores. Null for lines added
+  // via name search or the top-sellers row, where nothing was scanned.
+  scannedBarcode: string | null;
 };
 
 type ServiceLine = {
@@ -223,6 +229,8 @@ export function SaleForm({
     (restoredDraft?.cart ?? []).map((item) => ({
       ...item,
       product: products.find((product) => product.id === item.product.id) ?? item.product,
+      // Drafts persisted before scanned codes existed have no such field.
+      scannedBarcode: item.scannedBarcode ?? null,
     }))
   );
   const [expandedDiscounts, setExpandedDiscounts] = useState<Set<string>>(new Set());
@@ -434,7 +442,9 @@ export function SaleForm({
     setCart((current) => recomputeCartPrices(current, nextTier, offerRules));
   }
 
-  function addProduct(product: Product) {
+  // `scannedBarcode` is the raw code when this came from an actual scan, and
+  // null for the name-search / top-sellers paths.
+  function addProduct(product: Product, scannedBarcode: string | null = null) {
     setCart((current) => {
       const existing = current.find((item) => item.product.id === product.id);
 
@@ -452,6 +462,10 @@ export function SaleForm({
             unitPrice: String(
               effectiveUnitPrice(item.product, appliedTier, nextQuantity, offerRules)
             ),
+            // Keep the first scanned code recorded for this line; only fill it in
+            // if the line was started without one (e.g. added via name search and
+            // later scanned). One invoice line can only carry one code.
+            scannedBarcode: item.scannedBarcode ?? scannedBarcode,
           };
         });
       }
@@ -466,6 +480,7 @@ export function SaleForm({
           unitPrice: String(effectiveUnitPrice(product, appliedTier, 1, offerRules)),
           lineDiscount: "0",
           discountNote: "",
+          scannedBarcode,
         },
       ];
     });
@@ -543,7 +558,9 @@ export function SaleForm({
       return;
     }
 
-    addProduct(product);
+    // Record the exact string that was scanned — NOT product.barcode, which for
+    // a serialized product is only the shared prefix.
+    addProduct(product, code);
     setBarcodeMessage(null);
     setBarcode("");
   }
@@ -649,6 +666,7 @@ export function SaleForm({
         line_discount: money(parseDecimal(item.lineDiscount)),
         discount_note: item.discountNote.trim() || null,
         warranty_months: item.product.warranty_months,
+        scanned_barcode: item.scannedBarcode,
       })),
       services: serviceLines.map((line) => ({
         service_id: line.serviceId || null,

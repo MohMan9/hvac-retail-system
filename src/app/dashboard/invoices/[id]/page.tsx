@@ -82,7 +82,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
   const { data: items } = await supabase
     .from("invoice_items")
     .select(
-      "id, product_id, warehouse_id, quantity, unit_price, line_discount, discount_note, discount_approved_by, discount_rejected_by, warranty_start_date, warranty_months, line_total"
+      "id, product_id, warehouse_id, quantity, unit_price, line_discount, discount_note, discount_approved_by, discount_rejected_by, warranty_start_date, warranty_months, scanned_barcode, line_total"
     )
     .eq("invoice_id", invoice.id)
     .order("id");
@@ -238,6 +238,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
             discountNote: item.discount_note,
             discountApprovedBy: item.discount_approved_by,
             discountRejectedBy: item.discount_rejected_by,
+            scannedBarcode: item.scanned_barcode,
           }))}
           warehouses={allWarehouses ?? []}
           products={draftProducts}
@@ -261,7 +262,17 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
             <tbody>
               {(items ?? []).map((item) => (
                 <tr key={item.id} className="border-b border-slate-100 last:border-0">
-                  <td className={tdClass}>{productNameById.get(item.product_id)}</td>
+                  {/* The scanned code is the specific unit sold — for serialized
+                      products it carries the per-unit suffix the product's own
+                      shared barcode prefix doesn't have. */}
+                  <td className={tdClass}>
+                    <span className="block">{productNameById.get(item.product_id)}</span>
+                    {item.scanned_barcode && (
+                      <span className="mt-0.5 block text-xs text-slate-400" dir="ltr">
+                        {dict["invoiceDetail.scannedCode"]}: {item.scanned_barcode}
+                      </span>
+                    )}
+                  </td>
                   <td className={tdClass}>{warehouseNameById.get(item.warehouse_id)}</td>
                   <td className={tdClass} dir="ltr">
                     {item.quantity}

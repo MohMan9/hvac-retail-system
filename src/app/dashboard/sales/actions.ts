@@ -24,6 +24,10 @@ type CartItemInput = {
   line_discount: number;
   discount_note: string | null;
   warranty_months: number | null;
+  // Exact code scanned at sale time (null when the line was added without a
+  // scan). For serialized products this is the customer's unique unit code,
+  // which the product's shared barcode prefix cannot represent.
+  scanned_barcode: string | null;
 };
 
 type ServiceInput = {
@@ -215,6 +219,7 @@ export async function saveDraftInvoice(input: SaveDraftInput): Promise<ActionRes
             line_discount: item.line_discount,
             discount_note: item.discount_note,
             warranty_months: item.warranty_months,
+            scanned_barcode: item.scanned_barcode,
             line_total: lineTotal,
           };
         })

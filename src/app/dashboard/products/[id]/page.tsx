@@ -61,7 +61,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
   const { data: product } = await supabase
     .from("products")
     .select(
-      "id, name_ar, name_en, description_ar, description_en, barcode, serial_suffix_length, unit_of_measure, warranty_months"
+      "id, name_ar, name_en, description_ar, description_en, barcode, item_number, serial_suffix_length, unit_of_measure, warranty_months"
     )
     .eq("id", id)
     .eq("organization_id", profile.organization_id)
@@ -172,6 +172,14 @@ export default async function ProductDetailPage({ params }: PageProps) {
           <span className="font-medium text-slate-700">{dict["productDetail.barcode"]}: </span>
           <span className="text-slate-600" dir="ltr">
             {product.barcode}
+          </span>
+        </div>
+        <div>
+          <span className="font-medium text-slate-700">
+            {dict["productDetail.itemNumber"]}:{" "}
+          </span>
+          <span className="text-slate-600" dir="ltr">
+            {product.item_number ?? "—"}
           </span>
         </div>
         <div>
