@@ -91,12 +91,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   // Three independent permissions used to sit behind one role check here:
   // editing products, and viewing the loaded-cost column, can now be granted
   // separately.
-  const permissions = await getEffectivePermissions();
-  const canManageProducts = hasPermission(permissions, "manage_products");
-  const canViewLoadedCost = hasPermission(permissions, "view_loaded_cost");
-  // Margin display is gated on view_product_costs (it needs the real cost);
-  // this is separate from the loaded-cost column's view_loaded_cost gate.
-  const canViewProductCosts = hasPermission(permissions, "view_product_costs");
+  const permissionsPromise = getEffectivePermissions();
 
   let productsQuery = supabase
     .from("products")
@@ -110,7 +105,17 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     );
   }
 
-  const { data: products, count } = await productsQuery;
+  // Product visibility is enforced by RLS and does not depend on the UI
+  // permission map, so these two network requests can run concurrently.
+  const [permissions, { data: products, count }] = await Promise.all([
+    permissionsPromise,
+    productsQuery,
+  ]);
+  const canManageProducts = hasPermission(permissions, "manage_products");
+  const canViewLoadedCost = hasPermission(permissions, "view_loaded_cost");
+  // Margin display is gated on view_product_costs (it needs the real cost);
+  // this is separate from the loaded-cost column's view_loaded_cost gate.
+  const canViewProductCosts = hasPermission(permissions, "view_product_costs");
   const totalPages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE));
 
   const productIds = (products ?? []).map((product) => product.id);
