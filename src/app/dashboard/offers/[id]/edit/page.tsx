@@ -58,6 +58,7 @@ export default async function EditOfferPage({ params }: PageProps) {
     .from("products")
     .select("id, name_ar, name_en")
     .eq("organization_id", profile.organization_id)
+    .eq("is_archived", false)
     .order("name_en");
 
   const { data: existingRules } = await supabase

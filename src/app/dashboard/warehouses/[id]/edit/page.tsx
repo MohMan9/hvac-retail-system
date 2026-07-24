@@ -1,6 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { WarehouseEditForm } from "./warehouse-edit-form";
+import { DeleteArchiveButton } from "../../../delete-archive-button";
+import { deleteOrArchiveWarehouse } from "../../../archive-actions";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
 import { getCurrentUser } from "@/lib/auth.server";
@@ -59,6 +61,14 @@ export default async function EditWarehousePage({ params }: PageProps) {
           location: warehouse.location,
         }}
       />
+
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <DeleteArchiveButton
+          entity="warehouse"
+          action={deleteOrArchiveWarehouse.bind(null, warehouse.id)}
+          listHref="/dashboard/warehouses"
+        />
+      </div>
     </main>
   );
 }

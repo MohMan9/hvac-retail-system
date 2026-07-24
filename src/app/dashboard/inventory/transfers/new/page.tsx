@@ -29,11 +29,13 @@ export default async function NewStockTransferPage() {
   const { data: products } = await supabase
     .from("products")
     .select("id, name_en, name_ar")
+    .eq("is_archived", false)
     .order("name_en");
 
   const { data: warehouses } = await supabase
     .from("warehouses")
     .select("id, name_en")
+    .eq("is_archived", false)
     .order("name_en");
 
   return (

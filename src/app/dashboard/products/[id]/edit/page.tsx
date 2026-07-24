@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { ProductEditForm } from "./product-edit-form";
 import { ProductImagesManager } from "./product-images-manager";
 import { ProductStockSection } from "./product-stock-section";
+import { DeleteArchiveButton } from "../../../delete-archive-button";
+import { deleteOrArchiveProduct } from "../../../archive-actions";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { getEffectivePermissions } from "@/lib/permissions.server";
 import { getCurrentUser } from "@/lib/auth.server";
@@ -117,6 +119,7 @@ export default async function EditProductPage({ params }: PageProps) {
       .from("warehouses")
       .select("id, name_en, name_ar")
       .eq("organization_id", profile.organization_id)
+      .eq("is_archived", false)
       .order("name_en");
 
     warehouses = (warehouseRows ?? []).map((warehouse) => ({
@@ -161,6 +164,14 @@ export default async function EditProductPage({ params }: PageProps) {
           warehouses={warehouses}
         />
       )}
+
+      <div className="border-t border-slate-200 pt-6">
+        <DeleteArchiveButton
+          entity="product"
+          action={deleteOrArchiveProduct.bind(null, product.id)}
+          listHref="/dashboard/products"
+        />
+      </div>
     </main>
   );
 }

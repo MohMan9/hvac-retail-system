@@ -14,6 +14,9 @@ import { hasPermission } from "@/lib/permissions";
 import { displayName } from "@/lib/display-name";
 import { marginPercent } from "@/lib/margin";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ArchiveViewTabs } from "../archive-view-tabs";
+import { RestoreButton } from "../restore-button";
+import { unarchiveProduct } from "../archive-actions";
 import {
   btnPrimary,
   btnSecondary,
@@ -28,7 +31,7 @@ import {
 } from "@/lib/ui";
 
 type ProductsPageProps = {
-  searchParams: Promise<{ message?: string; q?: string; page?: string }>;
+  searchParams: Promise<{ message?: string; q?: string; page?: string; archived?: string }>;
 };
 
 type ProductImage = {
@@ -75,7 +78,9 @@ const unitKeys: Record<string, "unit.piece" | "unit.meter"> = {
 };
 
 export default async function ProductsPage({ searchParams }: ProductsPageProps) {
-  const { message, q: rawQ, page: pageParam } = await searchParams;
+  const { message, q: rawQ, page: pageParam, archived } = await searchParams;
+  // Default view is active rows only; ?archived=1 shows ONLY archived ones.
+  const showArchived = archived === "1";
   const q = sanitizeSearchTerm(rawQ);
   const page = parsePage(pageParam);
   const { from, to } = pageRange(page);
@@ -99,6 +104,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
       "id, barcode, item_number, name_ar, name_en, serial_suffix_length, unit_of_measure",
       { count: "exact" }
     )
+    .eq("is_archived", showArchived)
     .order("name_en")
     .range(from, to);
 
@@ -229,6 +235,13 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
         </p>
       )}
 
+      <ArchiveViewTabs
+        basePath="/dashboard/products"
+        params={{ q }}
+        showArchived={showArchived}
+        dict={dict}
+      />
+
       {isEmpty ? (
         <EmptyState
           icon={Package}
@@ -288,6 +301,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                           </span>
                         )}
                         <span>{productName}</span>
+                        {showArchived && <Badge tone="slate">{dict["archive.badge"]}</Badge>}
                         {product.serial_suffix_length > 0 && (
                           <Badge tone="slate">
                             {dict["products.serialized"]} ±{product.serial_suffix_length}
@@ -349,9 +363,19 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                     )}
                     {canManageProducts && (
                       <td className={tdClass}>
-                        <Link href={`/dashboard/products/${product.id}/edit`} className={linkClass}>
-                          {dict["common.edit"]}
-                        </Link>
+                        {showArchived ? (
+                          <RestoreButton
+                            action={unarchiveProduct.bind(null, product.id)}
+                            listHref="/dashboard/products"
+                          />
+                        ) : (
+                          <Link
+                            href={`/dashboard/products/${product.id}/edit`}
+                            className={linkClass}
+                          >
+                            {dict["common.edit"]}
+                          </Link>
+                        )}
                       </td>
                     )}
                   </tr>
@@ -364,7 +388,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
       <Pagination
         basePath="/dashboard/products"
-        params={{ q }}
+        params={{ q, archived: showArchived ? "1" : undefined }}
         page={page}
         totalPages={totalPages}
         dict={dict}

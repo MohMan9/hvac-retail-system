@@ -38,6 +38,7 @@ export default async function NewProductPage() {
     .from("warehouses")
     .select("id, name_en")
     .eq("organization_id", profile.organization_id)
+    .eq("is_archived", false)
     .order("name_en");
 
   return (

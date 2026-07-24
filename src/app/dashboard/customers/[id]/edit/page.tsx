@@ -2,6 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth.server";
 import { CustomerEditForm } from "./customer-edit-form";
+import { DeleteArchiveButton } from "../../../delete-archive-button";
+import { deleteOrArchiveCustomer } from "../../../archive-actions";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { pageTitleClass } from "@/lib/ui";
 
@@ -52,6 +54,14 @@ export default async function EditCustomerPage({ params }: PageProps) {
           customer_type: customer.customer_type,
         }}
       />
+
+      <div className="mt-8 border-t border-slate-200 pt-6">
+        <DeleteArchiveButton
+          entity="customer"
+          action={deleteOrArchiveCustomer.bind(null, customer.id)}
+          listHref="/dashboard/customers"
+        />
+      </div>
     </main>
   );
 }

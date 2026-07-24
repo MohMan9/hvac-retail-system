@@ -42,6 +42,7 @@ export default async function NewOfferPage() {
     .from("products")
     .select("id, name_ar, name_en")
     .eq("organization_id", profile.organization_id)
+    .eq("is_archived", false)
     .order("name_en");
 
   // All existing rules feed the client-side overlap check as the cashier types.

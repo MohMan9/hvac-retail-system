@@ -108,7 +108,8 @@ export default async function DashboardPage() {
     const { data: allProducts } = await supabase
       .from("products")
       .select("id, name_en, name_ar")
-      .eq("organization_id", profile.organization_id);
+      .eq("organization_id", profile.organization_id)
+      .eq("is_archived", false);
 
     const { data: inventoryRows } = await supabase
       .from("inventory")

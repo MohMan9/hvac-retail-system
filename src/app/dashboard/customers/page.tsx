@@ -7,6 +7,10 @@ import { Pagination } from "@/components/pagination";
 import { PAGE_SIZE, pageRange, parsePage, sanitizeSearchTerm } from "@/lib/pagination";
 import { getServerDictionary } from "@/lib/i18n/get-server-locale";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Badge } from "@/components/ui/badge";
+import { ArchiveViewTabs } from "../archive-view-tabs";
+import { RestoreButton } from "../restore-button";
+import { unarchiveCustomer } from "../archive-actions";
 import { ClickableRow } from "@/components/ui/clickable-row";
 import {
   btnPrimary,
@@ -21,7 +25,7 @@ import {
 } from "@/lib/ui";
 
 type CustomersPageProps = {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; message?: string; archived?: string }>;
 };
 
 const customerTypeKeys: Record<string, "customerType.wholesale" | "customerType.craftsman" | "customerType.shop" | "customerType.retail"> = {
@@ -32,8 +36,10 @@ const customerTypeKeys: Record<string, "customerType.wholesale" | "customerType.
 };
 
 export default async function CustomersPage({ searchParams }: CustomersPageProps) {
-  const { q: rawQ, page: pageParam } = await searchParams;
+  const { q: rawQ, page: pageParam, message, archived } = await searchParams;
   const q = sanitizeSearchTerm(rawQ);
+  // Default view is active rows only; ?archived=1 shows ONLY archived ones.
+  const showArchived = archived === "1";
   const page = parsePage(pageParam);
   const { from, to } = pageRange(page);
   const { dict } = await getServerDictionary();
@@ -59,6 +65,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
     .from("customers")
     .select("id, name, phone, customer_type", { count: "exact" })
     .eq("organization_id", profile.organization_id)
+    .eq("is_archived", showArchived)
     .order("name")
     .range(from, to);
 
@@ -116,6 +123,19 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
         </button>
       </form>
 
+      {message && (
+        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          {message}
+        </p>
+      )}
+
+      <ArchiveViewTabs
+        basePath="/dashboard/customers"
+        params={{ q }}
+        showArchived={showArchived}
+        dict={dict}
+      />
+
       {isEmpty ? (
         <EmptyState
           icon={Users}
@@ -132,25 +152,25 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                 <th className={thClass}>{dict["customers.colPhone"]}</th>
                 <th className={thClass}>{dict["customers.colType"]}</th>
                 <th className={thClass}>{dict["customers.colCompletedInvoices"]}</th>
+                {showArchived && <th className={thClass}>{dict["common.actions"]}</th>}
               </tr>
             </thead>
             <tbody>
               {customers?.map((customer) => {
                 const typeKey = customerTypeKeys[customer.customer_type];
 
-                return (
-                  <ClickableRow
-                    key={customer.id}
-                    href={`/dashboard/customers/${customer.id}`}
-                    className={trClass}
-                  >
+                const cells = (
+                  <>
                     <td className={tdClass}>
-                      <Link
-                        href={`/dashboard/customers/${customer.id}`}
-                        className="font-medium text-slate-900 hover:text-blue-600"
-                      >
-                        {customer.name}
-                      </Link>
+                      <span className="flex items-center gap-2">
+                        <Link
+                          href={`/dashboard/customers/${customer.id}`}
+                          className="font-medium text-slate-900 hover:text-blue-600"
+                        >
+                          {customer.name}
+                        </Link>
+                        {showArchived && <Badge tone="slate">{dict["archive.badge"]}</Badge>}
+                      </span>
                     </td>
                     <td className={tdClass} dir="ltr">
                       {customer.phone ?? "—"}
@@ -159,6 +179,30 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                     <td className={tdClass} dir="ltr">
                       {completedCountByCustomer.get(customer.id) ?? 0}
                     </td>
+                    {showArchived && (
+                      <td className={tdClass}>
+                        <RestoreButton
+                          action={unarchiveCustomer.bind(null, customer.id)}
+                          listHref="/dashboard/customers"
+                        />
+                      </td>
+                    )}
+                  </>
+                );
+
+                // Archived rows host a Restore button, so they aren't wrapped in
+                // a row-level link that would swallow the click.
+                return showArchived ? (
+                  <tr key={customer.id} className={trClass}>
+                    {cells}
+                  </tr>
+                ) : (
+                  <ClickableRow
+                    key={customer.id}
+                    href={`/dashboard/customers/${customer.id}`}
+                    className={trClass}
+                  >
+                    {cells}
                   </ClickableRow>
                 );
               })}
@@ -169,7 +213,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
 
       <Pagination
         basePath="/dashboard/customers"
-        params={{ q }}
+        params={{ q, archived: showArchived ? "1" : undefined }}
         page={page}
         totalPages={totalPages}
         dict={dict}

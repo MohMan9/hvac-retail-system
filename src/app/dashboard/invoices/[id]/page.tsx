@@ -148,6 +148,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
           "id, barcode, name_ar, name_en, warranty_months, product_prices(price_wholesale, price_craftsman, price_shop, price_retail)"
         )
         .eq("organization_id", profile.organization_id)
+        .eq("is_archived", false)
     : { data: [] };
 
   const { data: allWarehouses } = canEditItems
@@ -155,6 +156,7 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
         .from("warehouses")
         .select("id, name_en")
         .eq("organization_id", profile.organization_id)
+        .eq("is_archived", false)
         .order("name_en")
     : { data: [] };
 

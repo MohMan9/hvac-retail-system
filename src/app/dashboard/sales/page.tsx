@@ -28,18 +28,21 @@ export default async function SalesPage() {
       "id, barcode, name_ar, name_en, warranty_months, product_prices(price_wholesale, price_craftsman, price_shop, price_retail)"
     )
     .eq("organization_id", profile.organization_id)
+    .eq("is_archived", false)
     .order("name_en");
 
   const { data: customers } = await supabase
     .from("customers")
     .select("id, name, phone, customer_type")
     .eq("organization_id", profile.organization_id)
+    .eq("is_archived", false)
     .order("name");
 
   const { data: warehouses } = await supabase
     .from("warehouses")
     .select("id, name_en")
     .eq("organization_id", profile.organization_id)
+    .eq("is_archived", false)
     .order("name_en");
 
   const { data: services } = await supabase
