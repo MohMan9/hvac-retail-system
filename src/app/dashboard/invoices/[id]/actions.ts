@@ -179,13 +179,16 @@ export async function completeInvoice(invoiceId: string): Promise<CompleteInvoic
 
   // Same ownership rule as editing: only the invoice's own salesperson or a
   // manager/admin may complete it. loadEditableInvoice also enforces the
-  // draft-only precondition and org scoping.
+  // draft-only precondition and org scoping — `false` here keeps completing
+  // draft-only even for supervisors (completing an already-completed invoice
+  // is meaningless).
   const loaded = await loadEditableInvoice(
     supabase,
     invoiceId,
     profile.organization_id,
     userId,
-    profile.role
+    profile.role,
+    false
   );
 
   if ("error" in loaded) {
@@ -307,7 +310,11 @@ async function loadEditableInvoice(
   invoiceId: string,
   organizationId: string,
   userId: string,
-  role: string
+  role: string,
+  // Whether the caller holds approve_reject_discounts. Supervisors may edit an
+  // invoice at any status; everyone else is draft-only. Pass false where the
+  // operation itself only makes sense on a draft (e.g. completing).
+  canSupervise: boolean
 ): Promise<{ error: string } | { invoice: EditableInvoice }> {
   const { data: invoice } = await supabase
     .from("invoices")
@@ -320,11 +327,14 @@ async function loadEditableInvoice(
     return { error: "Invoice not found" };
   }
 
-  if (invoice.status !== "draft") {
-    return { error: "Only draft invoices can be edited" };
+  // Mirrors the RLS rule: once completed, only a supervisor can still change it
+  // — a salesperson can no longer edit even their own invoice.
+  if (invoice.status !== "draft" && !canSupervise) {
+    return { error: "This invoice is completed — contact a manager for changes." };
   }
 
-  const canEdit = role === "manager" || role === "admin" || invoice.salesperson_id === userId;
+  const canEdit =
+    canSupervise || role === "manager" || role === "admin" || invoice.salesperson_id === userId;
 
   if (!canEdit) {
     return { error: "You don't have permission to edit this invoice" };
@@ -369,7 +379,8 @@ export async function updateInvoiceItem(
     item.invoice_id,
     profile.organization_id,
     userId,
-    profile.role
+    profile.role,
+    await checkPermission("approve_reject_discounts")
   );
 
   if ("error" in loaded) {
@@ -465,7 +476,8 @@ export async function removeInvoiceItem(invoiceItemId: string): Promise<ActionRe
     item.invoice_id,
     profile.organization_id,
     userId,
-    profile.role
+    profile.role,
+    await checkPermission("approve_reject_discounts")
   );
 
   if ("error" in loaded) {
@@ -526,7 +538,8 @@ export async function addInvoiceItem(
     invoiceId,
     profile.organization_id,
     userId,
-    profile.role
+    profile.role,
+    await checkPermission("approve_reject_discounts")
   );
 
   if ("error" in loaded) {

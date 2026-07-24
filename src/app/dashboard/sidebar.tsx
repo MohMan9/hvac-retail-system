@@ -8,6 +8,7 @@ import {
   Package,
   Users,
   Boxes,
+  Building2,
   Warehouse,
   Wrench,
   Wallet,
@@ -87,6 +88,17 @@ export function Sidebar({ dict, permissions }: { dict: Dictionary; permissions: 
           : []),
         ...(can("manage_expenses")
           ? [{ href: "/dashboard/finance/expenses", labelKey: "nav.expenses" as const, icon: Wallet }]
+          : []),
+        // Fixed assets feed depreciation into the monthly report; same
+        // manage_expenses visibility as Expenses.
+        ...(can("manage_expenses")
+          ? [
+              {
+                href: "/dashboard/finance/fixed-assets",
+                labelKey: "nav.fixedAssets" as const,
+                icon: Building2,
+              },
+            ]
           : []),
         ...(can("manage_partners")
           ? [{ href: "/dashboard/finance/partners", labelKey: "nav.partners" as const, icon: Handshake }]

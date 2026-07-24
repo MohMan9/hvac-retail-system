@@ -119,33 +119,44 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
   // seniority concern — there's no granular permission for it, and role is
   // still meaningful as a seniority label.
   const isSenior = profile.role === "manager" || profile.role === "admin";
+  // Mirrors the database rule: a draft can be edited by its own salesperson or
+  // any senior, but once an invoice is COMPLETED only a supervisor (someone
+  // with approve_reject_discounts) may still change it. Showing edit controls
+  // to anyone else would just produce an RLS failure on click.
   const canEditItems =
-    invoice.status === "draft" &&
-    (isSenior || invoice.salesperson_id === authData.user.id);
+    invoice.status === "draft"
+      ? isSenior || invoice.salesperson_id === authData.user.id
+      : canDecideDiscounts;
+  // A completed invoice the current user may not touch — explain why instead of
+  // rendering actions that would fail.
+  const showCompletedLockNote = invoice.status === "completed" && !canEditItems;
+  // The interactive items table also hosts the discount approve/reject controls,
+  // so render it whenever the user can edit OR decide discounts — a discount
+  // approver who is neither the owner nor a senior still needs those buttons on
+  // a draft, even though the edit/remove column stays hidden for them.
+  const showItemsManager = canEditItems || (invoice.status === "draft" && canDecideDiscounts);
   const statusKey = statusKeys[invoice.status];
 
-  // Only draft invoices can have their lines edited, and only then do we
-  // need the full catalog (for adding a new product line) and all
-  // warehouses (for the warehouse picker) rather than just the ones already
-  // referenced by this invoice's existing lines.
-  const { data: allProducts } =
-    invoice.status === "draft"
-      ? await supabase
-          .from("products")
-          .select(
-            "id, barcode, name_ar, name_en, warranty_months, product_prices(price_wholesale, price_craftsman, price_shop, price_retail)"
-          )
-          .eq("organization_id", profile.organization_id)
-      : { data: [] };
+  // The editable table needs the full catalog (for adding a new product line)
+  // and all warehouses (for the warehouse picker), rather than just the ones
+  // already referenced by this invoice's existing lines. Only load them when
+  // the current user can actually edit.
+  const { data: allProducts } = canEditItems
+    ? await supabase
+        .from("products")
+        .select(
+          "id, barcode, name_ar, name_en, warranty_months, product_prices(price_wholesale, price_craftsman, price_shop, price_retail)"
+        )
+        .eq("organization_id", profile.organization_id)
+    : { data: [] };
 
-  const { data: allWarehouses } =
-    invoice.status === "draft"
-      ? await supabase
-          .from("warehouses")
-          .select("id, name_en")
-          .eq("organization_id", profile.organization_id)
-          .order("name_en")
-      : { data: [] };
+  const { data: allWarehouses } = canEditItems
+    ? await supabase
+        .from("warehouses")
+        .select("id, name_en")
+        .eq("organization_id", profile.organization_id)
+        .order("name_en")
+    : { data: [] };
 
   const draftProducts = (allProducts ?? []).map((product) => {
     const price = Array.isArray(product.product_prices)
@@ -207,7 +218,12 @@ export default async function InvoiceDetailPage({ params }: PageProps) {
       </section>
 
       <h2 className={`${sectionTitleClass} mb-3`}>{dict["invoiceDetail.productsTitle"]}</h2>
-      {invoice.status === "draft" ? (
+      {showCompletedLockNote && (
+        <p className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+          {dict["invoiceDetail.completedLocked"]}
+        </p>
+      )}
+      {showItemsManager ? (
         <DraftInvoiceItems
           invoiceId={invoice.id}
           items={(items ?? []).map((item) => ({

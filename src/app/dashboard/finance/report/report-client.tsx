@@ -31,11 +31,22 @@ type InvoiceDetail = {
   invoice_number: string;
   sale_date: string;
   customer_name: string | null;
+  salesperson_name: string | null;
   payment_method: string;
   subtotal: number;
   discount_total: number;
   vat_amount: number;
   total: number;
+};
+
+// One fixed asset active during the reported period, with its straight-line
+// monthly depreciation as computed by the report RPC.
+type FixedAssetDetail = {
+  name: string;
+  purchase_cost: number;
+  purchase_date: string;
+  useful_life_years: number;
+  monthly_depreciation: number;
 };
 
 type ExpenseDetail = {
@@ -62,6 +73,7 @@ type MonthlyReport = {
   vat_collected: number;
   expenses_by_category: Record<string, number>;
   total_expenses: number;
+  depreciation_total: number;
   profit_before_tax: number;
   income_tax_rate: number;
   income_tax: number;
@@ -69,6 +81,7 @@ type MonthlyReport = {
   partner_distribution: PartnerDistribution[];
   invoices_detail: InvoiceDetail[];
   expenses_detail: ExpenseDetail[];
+  fixed_assets_detail: FixedAssetDetail[];
   cash_sessions_detail: CashSessionDetail[];
 };
 
@@ -221,6 +234,20 @@ export function ReportClient({ dict }: { dict: Dictionary }) {
             </div>
           </section>
 
+          {/* Depreciation is already folded into profit_before_tax by the RPC —
+              the hint below makes clear this is a factor, not a pending
+              deduction the reader still has to subtract themselves. */}
+          <section className={`${cardClass} p-4`}>
+            <h2 className={`${sectionTitleClass} mb-3`}>
+              {t("finance.report.depreciationTitle")}
+            </h2>
+            <StatRow
+              label={t("finance.report.depreciationTotal")}
+              value={formatMoney(report.depreciation_total)}
+            />
+            <p className="mt-2 text-xs text-slate-500">{t("finance.report.depreciationHint")}</p>
+          </section>
+
           <section className={`${cardClass} p-4`}>
             <h2 className={`${sectionTitleClass} mb-3`}>{t("finance.report.taxTitle")}</h2>
             <StatRow label={t("finance.report.vatCollected")} value={formatMoney(report.vat_collected)} />
@@ -295,6 +322,7 @@ export function ReportClient({ dict }: { dict: Dictionary }) {
                           <th className={thClass}>{t("invoices.colDate")}</th>
                           <th className={thClass}>{t("invoices.colInvoice")}</th>
                           <th className={thClass}>{t("invoices.colCustomer")}</th>
+                          <th className={thClass}>{t("invoices.colSalesperson")}</th>
                           <th className={thClass}>{t("finance.report.colPaymentMethod")}</th>
                           <th className={thClass}>{t("invoiceDetail.subtotal")}</th>
                           <th className={thClass}>{t("invoiceDetail.discount")}</th>
@@ -312,6 +340,7 @@ export function ReportClient({ dict }: { dict: Dictionary }) {
                               {invoice.invoice_number}
                             </td>
                             <td className={tdClass}>{invoice.customer_name ?? t("invoices.walkIn")}</td>
+                            <td className={tdClass}>{invoice.salesperson_name ?? "—"}</td>
                             <td className={tdClass}>
                               <PaymentMethodBadge paymentMethod={invoice.payment_method} dict={dict} />
                             </td>
@@ -374,6 +403,50 @@ export function ReportClient({ dict }: { dict: Dictionary }) {
                   </div>
                 ) : (
                   <p className="text-sm text-slate-500">{t("finance.expenses.notFound")}</p>
+                )}
+              </div>
+
+              <div>
+                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                  {t("finance.report.fixedAssetsDetailTitle")}
+                </h3>
+                {report.fixed_assets_detail.length > 0 ? (
+                  <div className={tableWrapClass}>
+                    <table className="w-full border-collapse text-sm">
+                      <thead>
+                        <tr className={theadRowClass}>
+                          <th className={thClass}>{t("finance.fixedAssets.colName")}</th>
+                          <th className={thClass}>{t("finance.fixedAssets.colCost")}</th>
+                          <th className={thClass}>{t("finance.fixedAssets.colPurchaseDate")}</th>
+                          <th className={thClass}>{t("finance.fixedAssets.colUsefulLife")}</th>
+                          <th className={thClass}>
+                            {t("finance.fixedAssets.colMonthlyDepreciation")}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {report.fixed_assets_detail.map((asset, index) => (
+                          <tr key={index} className="border-b border-slate-100 last:border-0">
+                            <td className={tdClass}>{asset.name}</td>
+                            <td className={tdClass} dir="ltr">
+                              {formatMoney(asset.purchase_cost)}
+                            </td>
+                            <td className={tdClass} dir="ltr">
+                              {asset.purchase_date}
+                            </td>
+                            <td className={tdClass} dir="ltr">
+                              {Number(asset.useful_life_years ?? 0)}
+                            </td>
+                            <td className={tdClass} dir="ltr">
+                              {formatMoney(asset.monthly_depreciation)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">{t("finance.fixedAssets.notFound")}</p>
                 )}
               </div>
 

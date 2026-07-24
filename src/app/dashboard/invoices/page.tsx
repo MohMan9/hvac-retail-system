@@ -95,7 +95,9 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
 
   let invoicesQuery = supabase
     .from("invoices")
-    .select("id, invoice_number, customer_id, sale_date, status, total", { count: "exact" })
+    .select("id, invoice_number, customer_id, salesperson_id, sale_date, status, total", {
+      count: "exact",
+    })
     .eq("organization_id", profile.organization_id)
     .order("created_at", { ascending: false })
     .range(from, to);
@@ -123,7 +125,19 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
     ? await supabase.from("customers").select("id, name").in("id", customerIds)
     : { data: [] };
 
+  // Resolve the salesperson names for the invoices on this page only.
+  const salespersonIds = [
+    ...new Set((invoices ?? []).map((invoice) => invoice.salesperson_id).filter(Boolean)),
+  ] as string[];
+
+  const { data: salespeople } = salespersonIds.length
+    ? await supabase.from("profiles").select("id, full_name").in("id", salespersonIds)
+    : { data: [] };
+
   const customerNameById = new Map((customers ?? []).map((customer) => [customer.id, customer.name]));
+  const salespersonNameById = new Map(
+    (salespeople ?? []).map((person) => [person.id, person.full_name])
+  );
   const isEmpty = !invoices || invoices.length === 0;
 
   return (
@@ -181,6 +195,7 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
               <tr className={theadRowClass}>
                 <th className={thClass}>{dict["invoices.colInvoice"]}</th>
                 <th className={thClass}>{dict["invoices.colCustomer"]}</th>
+                <th className={thClass}>{dict["invoices.colSalesperson"]}</th>
                 <th className={thClass}>{dict["invoices.colDate"]}</th>
                 <th className={thClass}>{dict["invoices.colStatus"]}</th>
                 <th className={thClass}>{dict["invoices.colTotal"]}</th>
@@ -198,6 +213,11 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
                     {invoice.customer_id
                       ? customerNameById.get(invoice.customer_id)
                       : dict["invoices.walkIn"]}
+                  </td>
+                  <td className={tdClass}>
+                    {(invoice.salesperson_id
+                      ? salespersonNameById.get(invoice.salesperson_id)
+                      : null) ?? "—"}
                   </td>
                   <td className={tdClass} dir="ltr">
                     {invoice.sale_date}
